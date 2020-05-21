@@ -8,10 +8,9 @@ extern crate serde_derive;
 use rocket::State;
 use rocket_contrib::templates::Template;
 use std::env;
-use std::path::Path;
-use std::collections::HashMap;
-use std::fs::{self, DirEntry};
-use std::io;
+use std::fs::{self};
+use std::path::{Path, PathBuf};
+use rocket::http::RawStr;
 
 #[derive(Debug)]
 struct Args {
@@ -26,12 +25,8 @@ struct IndexElement {
 }
 
 impl IndexElement {
-    fn new(class:String, name:String, date:String) -> IndexElement {
-        IndexElement {
-            class,
-            name,
-            date,
-        }
+    fn new(class: String, name: String, date: String) -> IndexElement {
+        IndexElement { class, name, date }
     }
 }
 
@@ -44,11 +39,7 @@ struct IndexRender {
 
 impl IndexRender {
     fn new(status: bool, info: String, list: Vec<IndexElement>) -> IndexRender {
-        IndexRender {
-            status,
-            info,
-            list,
-        }
+        IndexRender { status, info, list }
     }
 }
 
@@ -58,44 +49,65 @@ impl Args {
     }
 }
 
-#[get("/")]
-fn index(args: State<Args>) -> Template {
-    let path = Path::new(&args.file_dir);
+fn get_directory_info_render(dir: &str) -> IndexRender {
+    let path = Path::new(dir);
 
-    let mut render = IndexRender::new(false, "目录配置错误".to_string(), vec!());
+    let mut render = IndexRender::new(false, "目录配置错误".to_string(), vec![]);
     if (path.is_dir()) {
+        let mut elements: Vec<IndexElement> = vec![];
         for entry in fs::read_dir(path).expect("错误") {
             let file_path = entry.expect("文件错误").path();
-            let mut file_name = "".to_string();
-            if let Some(name) = file_path.file_name() {
-                file_name = name.to_str();
-            }
+            let mut file_name = file_path
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned();
 
-            println!("{:?}", file_name);
-
-            let mut class = "".to_string(); 
+            let mut class = "".to_string();
             if (file_path.is_dir()) {
-                class = "dir".to_string();
+                class = "d".to_string();
             } else {
-                class = "file".to_string();
+                class = "f".to_string();
             }
-
             
+            elements.push(IndexElement::new(class, file_name, "x".to_string()));
         }
+        render = IndexRender::new(true, "".to_string(), elements);
     } else {
-        render = IndexRender::new(false, "目录配置错误".to_string(), vec!());
+        render = IndexRender::new(false, "目录配置错误".to_string(), vec![]);
     }
+
+    return render
+}
+
+#[get("/")]
+fn index(args: State<Args>) -> Template {
+    let render = get_directory_info_render(&args.file_dir);
 
     Template::render("index", render)
 }
 
+#[get("/<name..>")]
+fn detail(args: State<Args>, name: PathBuf) -> Template {
+    let path = &args.file_dir;
+    let full_file_name = format!("{}{}", path, name.to_string_lossy().into_owned());
+    let full_path = Path::new(&full_file_name);
+    if (full_path.is_dir()) {
+        let render = get_directory_info_render(&full_file_name);
+        Template::render("index", render)
+    } else {
+        let render = get_directory_info_render("");
+        Template::render("detail", render)
+    }
+}
+
 fn main() {
     let args: Args = parse_arguments();
-    let dir = rocket::ignite()
+    let app = rocket::ignite()
         .manage(args)
-        .mount("/", routes![index])
-        .attach(Template::fairing())
-        .launch();
+        .mount("/", routes![index, detail])
+        .attach(Template::fairing());
+    app.launch();
 }
 
 fn parse_arguments() -> Args {

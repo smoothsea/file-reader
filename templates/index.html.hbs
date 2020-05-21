@@ -1,9 +1,11 @@
+<h2>文件目录</h2>
 {{~#if status}}
     {{#each list ~}}
-        <a href="{{name}}">
+        [ {{ class }} ]
+        <a href="./{{name}}/">
             {{~name}}
-        </a>
-    {{~/each}}}
+        </a><br/>
+    {{~/each}}
 {{~^~}}
     {{info}}
 {{~/if~}}
