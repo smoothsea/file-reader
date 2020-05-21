@@ -8,9 +8,11 @@ extern crate serde_derive;
 use rocket::State;
 use rocket_contrib::templates::Template;
 use std::env;
-use std::fs::{self};
+use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use rocket::http::RawStr;
+use std::io::prelude::*;
+use std::io::Error;
 
 #[derive(Debug)]
 struct Args {
@@ -48,6 +50,33 @@ impl Args {
         Args { file_dir: file_dir }
     }
 }
+
+#[derive(Debug, Serialize)]
+struct DetailRender {
+    content: String,    
+}
+
+impl DetailRender {
+    fn new(content: String) -> DetailRender {
+        DetailRender {
+            content
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct ErrorRender {
+    info: String,
+}
+
+impl ErrorRender {
+    fn new(info: String) -> ErrorRender {
+        ErrorRender {
+            info
+        }
+    }
+}
+
 
 fn get_directory_info_render(dir: &str) -> IndexRender {
     let path = Path::new(dir);
@@ -96,7 +125,21 @@ fn detail(args: State<Args>, name: PathBuf) -> Template {
         let render = get_directory_info_render(&full_file_name);
         Template::render("index", render)
     } else {
-        let render = get_directory_info_render("");
+        let file_result = File::open(full_path);
+        let mut file;
+        match file_result {
+            Error => {
+                return Template::render("error", ErrorRender::new("Reading failed".to_string()));
+            },
+            Ok(f) => {
+               file = f; 
+            }
+        }
+
+        let mut contents = String::new();
+        file.read_to_string(&mut contents).expect("can't read file");
+        let render = DetailRender::new(contents);
+
         Template::render("detail", render)
     }
 }
