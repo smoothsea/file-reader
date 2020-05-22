@@ -10,9 +10,8 @@ use rocket_contrib::templates::Template;
 use std::env;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
-use rocket::http::RawStr;
 use std::io::prelude::*;
-use std::io::Error;
+use std::error::Error;
 
 #[derive(Debug)]
 struct Args {
@@ -78,14 +77,14 @@ impl ErrorRender {
 }
 
 
-fn get_directory_info_render(dir: &str) -> IndexRender {
+fn get_directory_info_render(dir: &str) -> Result<IndexRender, Box<dyn Error>> {
     let path = Path::new(dir);
-
     let mut render = IndexRender::new(false, "目录配置错误".to_string(), vec![]);
     if (path.is_dir()) {
         let mut elements: Vec<IndexElement> = vec![];
-        for entry in fs::read_dir(path).expect("错误") {
-            let file_path = entry.expect("文件错误").path();
+
+        for entry in fs::read_dir(path).expect("xx") {
+            let file_path = entry.expect("ff").path();
             let mut file_name = file_path
                 .file_name()
                 .unwrap()
@@ -106,14 +105,28 @@ fn get_directory_info_render(dir: &str) -> IndexRender {
         render = IndexRender::new(false, "目录配置错误".to_string(), vec![]);
     }
 
-    return render
+    Ok(render)
 }
+
+fn get_detail_render(file: &str) -> Result<DetailRender, Box<dyn Error>> {
+    let path = Path::new(file);
+    let mut render = DetailRender::new("".to_string());
+
+    Ok(render)
+}
+
 
 #[get("/")]
 fn index(args: State<Args>) -> Template {
-    let render = get_directory_info_render(&args.file_dir);
-
-    Template::render("index", render)
+    match get_directory_info_render(&args.file_dir) {
+        Ok(render) => {
+            return Template::render("index", render);
+        },
+        Err(e) => {
+            let render = ErrorRender::new(e.to_string());
+            return Template::render("error", render);      
+        } 
+    };
 }
 
 #[get("/<name..>")]
@@ -122,24 +135,33 @@ fn detail(args: State<Args>, name: PathBuf) -> Template {
     let full_file_name = format!("{}{}", path, name.to_string_lossy().into_owned());
     let full_path = Path::new(&full_file_name);
     if (full_path.is_dir()) {
-        let render = get_directory_info_render(&full_file_name);
-        Template::render("index", render)
+        match get_directory_info_render(&full_file_name) {
+            Ok(render) => {
+                return Template::render("index", render)
+            },
+            Err(e) => {
+                let render = ErrorRender::new(e.to_string());
+                return Template::render("error", render);      
+            } 
+        };
     } else {
         let file_result = File::open(full_path);
         let mut file;
         match file_result {
-            Error => {
-                return Template::render("error", ErrorRender::new("Reading failed".to_string()));
-            },
             Ok(f) => {
-               file = f; 
+                file = f; 
+            },
+            Err(e) => {
+                return Template::render("error", ErrorRender::new(e.to_string()));
             }
         }
 
         let mut contents = String::new();
-        file.read_to_string(&mut contents).expect("can't read file");
-        let render = DetailRender::new(contents);
+        if let Err(e) = file.read_to_string(&mut contents) {
+            return Template::render("error", ErrorRender::new(e.to_string()));
+        }
 
+        let render = DetailRender::new(contents);
         Template::render("detail", render)
     }
 }
