@@ -83,8 +83,8 @@ fn get_directory_info_render(dir: &str) -> Result<IndexRender, Box<dyn Error>> {
     if (path.is_dir()) {
         let mut elements: Vec<IndexElement> = vec![];
 
-        for entry in fs::read_dir(path).expect("xx") {
-            let file_path = entry.expect("ff").path();
+        for entry in fs::read_dir(path)? {
+            let file_path = entry?.path();
             let mut file_name = file_path
                 .file_name()
                 .unwrap()
@@ -108,10 +108,13 @@ fn get_directory_info_render(dir: &str) -> Result<IndexRender, Box<dyn Error>> {
     Ok(render)
 }
 
-fn get_detail_render(file: &str) -> Result<DetailRender, Box<dyn Error>> {
-    let path = Path::new(file);
-    let mut render = DetailRender::new("".to_string());
+fn get_detail_render(file_path: &str) -> Result<DetailRender, Box<dyn Error>> {
+    let path = Path::new(file_path);
+    let mut file = File::open(path)?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
 
+    let render = DetailRender::new(contents);
     Ok(render)
 }
 
@@ -145,24 +148,15 @@ fn detail(args: State<Args>, name: PathBuf) -> Template {
             } 
         };
     } else {
-        let file_result = File::open(full_path);
-        let mut file;
-        match file_result {
-            Ok(f) => {
-                file = f; 
+        match get_detail_render(&full_file_name) {
+            Ok(render) => {
+                return Template::render("detail", render);
             },
             Err(e) => {
-                return Template::render("error", ErrorRender::new(e.to_string()));
+                let render = ErrorRender::new(e.to_string());
+                return Template::render("error", render);
             }
         }
-
-        let mut contents = String::new();
-        if let Err(e) = file.read_to_string(&mut contents) {
-            return Template::render("error", ErrorRender::new(e.to_string()));
-        }
-
-        let render = DetailRender::new(contents);
-        Template::render("detail", render)
     }
 }
 
@@ -181,6 +175,13 @@ fn parse_arguments() -> Args {
     if (args.len() <= 1) {
         panic!("Arguments can't be empty");
     }
-    let file_dir: String = (&args[1]).to_string();
+    let mut file_dir: String = (&args[1]).to_string();
+    file_dir.pop();
+    if let Some(o) = file_dir.pop() {
+        if (o.to_string() != "/".to_string()) {
+            file_dir = format!("{}{}", file_dir, o);
+        }
+        file_dir = format!("{}{}", file_dir, "/".to_string());
+    };
     Args::new(file_dir)
 }
