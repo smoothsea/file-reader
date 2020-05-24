@@ -1,11 +1,33 @@
 <h2>文件目录</h2>
-{{~#if status}}
-    {{#each list ~}}
-        [ {{ class }} ]
-        <a href="./{{name}}/">
-            {{~name}}
-        </a><br/>
-    {{~/each}}
+
+{{#if status}}
+<table id="main" style="width: 100%;">
+    <thead><td>文件名</td><td>文件大小</td><td>时间</td></thead>
+    <tbody id="tbody">
+    </tbody>
+</table>
 {{~^~}}
     {{info}}
-{{~/if~}}
+{{/if~}}
+
+<div id="data" style="display: none;">
+    {{ list }}
+</div>
+<script>
+    var list;
+    var sort = {
+        field: "name",
+        order: "asc",
+    };
+    var tbody = document.getElementById("tbody");
+    var data = document.getElementById("data");
+    (function (w, d) {
+        var main = d.getElementById("main");
+        list = JSON.parse(data.innerText);
+        init();
+    })(window, document)
+
+    function init() {
+        console.log(list);
+    }
+</script>
