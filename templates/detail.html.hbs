@@ -1,4 +1,12 @@
-<div id="content" style="display:none">
+<form method="get" action="/search" target="_blank">
+全文搜索：
+<input type="text" name="search"> 
+<input type="hidden" name="path" value="{{ file_path }}">
+<input type="submit" value="搜索">
+</form>
+<br>
+
+<div id="content">
     {{ content }}
 </div>
 
@@ -31,5 +39,4 @@
             }
         });;
     }, 5000);
-
 </script>

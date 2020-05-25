@@ -87,6 +87,22 @@ impl ErrorRender {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct SearchRender {
+    search: String,    
+    content: String,
+    file_path: String,
+}
+
+impl SearchRender {
+    fn new(content: String, file_path: String, search: String) -> SearchRender {
+        SearchRender {
+            search,
+            content,
+            file_path,
+        }
+    }
+}
 
 fn get_directory_info_render(dir: &str) -> Result<IndexRender, Box<dyn Error>> {
     let path = Path::new(dir);
@@ -103,6 +119,10 @@ fn get_directory_info_render(dir: &str) -> Result<IndexRender, Box<dyn Error>> {
                 .unwrap()
                 .to_string_lossy()
                 .into_owned();
+
+            if (file_name.get(0..1) == Some(".")) {
+                continue;
+            }
 
             let len = metadata.len();
             let atime: DateTime<Utc> = metadata.modified()?.into();
@@ -174,6 +194,13 @@ fn attemp_to_read_file(file:&mut File, seek:u64, times:u8) -> Result<(String, u6
     Ok((content, seek))
 }
 
+fn get_search_render(file_path: &str, search: &str) -> Result<SearchRender, Box<dyn Error>> {
+    let path = Path::new(file_path);
+    let mut file = File::open(path)?;
+    
+    
+}
+
 
 #[get("/")]
 fn index(args: State<Args>) -> Template {
@@ -203,6 +230,19 @@ fn more(args: State<Args>, seek:u64, path:String) -> String {
         }
     }
     output
+}
+
+#[get("/search?<search>&<path>", rank = 3)]
+fn search(args: State<Args>, search:String, path:String) -> Template {
+    match get_search_render(&path, &search) {
+        Ok(render) => {
+            return Template::render("index", render);
+        },
+        Err(e) => {
+            let render = ErrorRender::new(e.to_string());
+            return Template::render("error", render);      
+        } 
+    };
 }
 
 

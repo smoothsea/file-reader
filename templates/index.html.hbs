@@ -2,32 +2,103 @@
 
 {{#if status}}
 <table id="main" style="width: 100%;">
-    <thead><td>文件名</td><td>文件大小</td><td>时间</td></thead>
+    <thead>
+        <td class="name">文件名</td>
+        <td class="size">文件大小</td>
+        <td class="date">时间</td>
+    </thead>
     <tbody id="tbody">
     </tbody>
 </table>
 {{~^~}}
-    {{info}}
+{{info}}
 {{/if~}}
 
 <div id="data" style="display: none;">
     {{ list }}
 </div>
 <script>
+(function (w, d) {
     var list;
     var sort = {
         field: "name",
         order: "asc",
     };
+
     var tbody = document.getElementById("tbody");
     var data = document.getElementById("data");
-    (function (w, d) {
-        var main = d.getElementById("main");
-        list = JSON.parse(data.innerText);
-        init();
-    })(window, document)
+
+    var main = d.getElementById("main");
+    list = JSON.parse(data.innerText);
+    init();
+
+    var headers = d.getElementsByTagName("thead")[0].getElementsByTagName("td");
+    for (var i=0,len=headers.length; i<len; i++) {
+        var element = headers[i];
+        element.onclick = function (e) {
+            var type = e.target.className;
+            if (sort.field == type) {
+                sort.order = sort.order == "asc" ? "desc" : "asc";
+            } else {
+                sort.field = type;
+                sort.order = "asc";
+            }
+
+            init();
+        }
+    }
 
     function init() {
-        console.log(list);
+        var tArray = list;
+        tArray.sort(function (a, b) {
+            var comparedContent1 = "";
+            var comparedContent2 = "";
+            if (sort.field == "name") {
+                comparedContent1 = a.class + "-" + a.name;
+                comparedContent2 = b.class + "-" + b.name;
+            } else {
+                comparedContent1 = a[sort.field];
+                comparedContent2 = b[sort.field];
+            }
+
+            if (sort.order == "desc") {
+                $t = comparedContent1;
+                comparedContent1 = comparedContent2;
+                comparedContent2 = t;
+            }
+
+            return comparedContent1 > comparedContent2 ? 1 : (comparedContent1 == comparedContent2 ? 0 : -1);
+        });
+
+        var html = "";
+        for (i=0,len=tArray.length; i<len; i++) {
+            var t = byteToText(tArray[i]["size"]);
+            html += "<tr>"
+                    +"<td>"+"["+tArray[i]["class"]+'] <a href="./'+tArray[i]["name"]+'/">'+tArray[i]["name"]+"</a></td>"
+                    +"<td>"+t+"</td>"
+                    +"<td>"+tArray[i]["date"]+"</td>"
+                    +"</tr>";
+        }
+        tbody.innerHTML = html;
     }
+
+    function byteToText(bytes)
+    {
+        if (isNaN(bytes)) {
+                return '';
+            }
+            var symbols = ['b', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+            var exp = Math.floor(Math.log(bytes)/Math.log(2));
+            if (exp < 1) {
+                exp = 0;
+            }
+            var i = Math.floor(exp / 10);
+            bytes = bytes / Math.pow(2, 10 * i);
+
+            if (bytes.toString().length > bytes.toFixed(2).toString().length) {
+                bytes = bytes.toFixed(2);
+            }
+            return bytes + symbols[i];
+    }
+})(window, document)
 </script>

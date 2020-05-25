@@ -12,6 +12,7 @@ serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
 chrono = "0.4.11"
+grep = "0.2.6"
 
 [dependencies.rocket_contrib]
 version = "0.4.4"
