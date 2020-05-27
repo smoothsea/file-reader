@@ -5,18 +5,24 @@ extern crate rocket;
 #[macro_use]
 extern crate serde_derive;
 
-use rocket::State;
-use rocket_contrib::templates::Template;
-use std::env;
-use std::fs::{self, File};
-use std::path::{Path, PathBuf};
-use std::io::prelude::*;
-use std::io::{SeekFrom};
-use std::str;
-use std::error::Error;
-use serde::{Serialize, Deserialize};
 use chrono::offset::Utc;
 use chrono::DateTime;
+use grep::matcher::Matcher;
+use grep::regex::RegexMatcher;
+use grep::searcher::sinks::UTF8;
+use grep::searcher::{Searcher, SearcherBuilder};
+use grep::searcher::SinkContext;
+use grep::printer::Standard;
+use rocket::State;
+use rocket_contrib::templates::Template;
+use serde::{Deserialize, Serialize};
+use std::env;
+use std::error::Error;
+use std::fs::{self, File};
+use std::io::prelude::*;
+use std::io::SeekFrom;
+use std::path::{Path, PathBuf};
+use std::str;
 
 #[derive(Debug)]
 struct Args {
@@ -33,7 +39,12 @@ struct IndexElement {
 
 impl IndexElement {
     fn new(class: String, name: String, date: String, size: u64) -> IndexElement {
-        IndexElement { class, name, date, size }
+        IndexElement {
+            class,
+            name,
+            date,
+            size,
+        }
     }
 }
 
@@ -46,8 +57,12 @@ struct IndexRender {
 
 impl IndexRender {
     fn new(status: bool, info: String, list: Vec<IndexElement>) -> IndexRender {
-        let list_json = serde_json::to_string(& list).expect("error");
-        IndexRender { status, info, list:list_json}
+        let list_json = serde_json::to_string(&list).expect("error");
+        IndexRender {
+            status,
+            info,
+            list: list_json,
+        }
     }
 }
 
@@ -59,7 +74,7 @@ impl Args {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct DetailRender {
-    content: String,    
+    content: String,
     seek: u64,
     file_path: String,
 }
@@ -69,7 +84,7 @@ impl DetailRender {
         DetailRender {
             content,
             seek,
-            file_path
+            file_path,
         }
     }
 }
@@ -81,15 +96,13 @@ struct ErrorRender {
 
 impl ErrorRender {
     fn new(info: String) -> ErrorRender {
-        ErrorRender {
-            info
-        }
+        ErrorRender { info }
     }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SearchRender {
-    search: String,    
+    search: String,
     content: String,
     file_path: String,
 }
@@ -134,7 +147,6 @@ fn get_directory_info_render(dir: &str) -> Result<IndexRender, Box<dyn Error>> {
             } else {
                 class = "f".to_string();
             }
-            
             elements.push(IndexElement::new(class, file_name, atime_string, len));
         }
         render = IndexRender::new(true, "".to_string(), elements);
@@ -151,12 +163,11 @@ fn get_detail_render(file_path: &str, start_seek: u64) -> Result<DetailRender, B
     let metadata = file.metadata()?;
     let file_len = metadata.len();
     let max_file_len = 5181440;
-    
     let mut contents = String::new();
     let mut seek = file_len;
     if (file_len > max_file_len || start_seek > 0) {
         let len_if_exceed = 512000; //500kb
-        let mut read_start_seek:u64;
+        let mut read_start_seek: u64;
         if (start_seek > 0) {
             read_start_seek = start_seek;
         } else {
@@ -173,7 +184,11 @@ fn get_detail_render(file_path: &str, start_seek: u64) -> Result<DetailRender, B
     Ok(render)
 }
 
-fn attemp_to_read_file(file:&mut File, seek:u64, times:u8) -> Result<(String, u64), Box<dyn Error>> {
+fn attemp_to_read_file(
+    file: &mut File,
+    seek: u64,
+    times: u8,
+) -> Result<(String, u64), Box<dyn Error>> {
     let mut content = "".to_string();
     let mut buff = vec![];
     file.seek(SeekFrom::Start(seek));
@@ -181,10 +196,10 @@ fn attemp_to_read_file(file:&mut File, seek:u64, times:u8) -> Result<(String, u6
     match String::from_utf8(buff) {
         Ok(s) => {
             return Ok((s, seek));
-        },
+        }
         Err(e) => {
             if (times > 0) {
-                return attemp_to_read_file(file, seek + 1, times - 1)
+                return attemp_to_read_file(file, seek + 1, times - 1);
             } else {
                 return Err(Box::new(e));
             }
@@ -194,37 +209,55 @@ fn attemp_to_read_file(file:&mut File, seek:u64, times:u8) -> Result<(String, u6
     Ok((content, seek))
 }
 
-fn get_search_render(file_path: &str, search: &str) -> Result<SearchRender, Box<dyn Error>> {
+fn get_search_render(file_path: &str, search: &str, before: &str, after: &str) -> Result<SearchRender, Box<dyn Error>> {
     let path = Path::new(file_path);
     let mut file = File::open(path)?;
-    
-    
-}
+    let matcher = RegexMatcher::new(search)?;
+    let mut searchBuild = SearcherBuilder::new();
+    let mut printer = Standard::new_no_color(vec![]);
+    let before_num:usize = before.parse()?;
+    let after_num:usize = after.parse()?;
+    searchBuild.multi_line(true);
+    searchBuild.after_context(after_num);
+    searchBuild.before_context(before_num);
+    println!("{}{}", after_num, before_num);
+    searchBuild.build().search_file(
+        &matcher,
+        &file,
+        printer.sink(&matcher),
+    )?;
 
+    let mut content = String::from_utf8(printer.into_inner().into_inner())?;
+
+    Ok(SearchRender::new(
+        content,
+        file_path.to_string(),
+        search.to_string(),
+    ))
+}
 
 #[get("/")]
 fn index(args: State<Args>) -> Template {
     match get_directory_info_render(&args.file_dir) {
         Ok(render) => {
             return Template::render("index", render);
-        },
+        }
         Err(e) => {
             let render = ErrorRender::new(e.to_string());
-            return Template::render("error", render);      
-        } 
+            return Template::render("error", render);
+        }
     };
 }
 
-
 #[get("/more?<seek>&<path>", rank = 3)]
-fn more(args: State<Args>, seek:u64, path:String) -> String {
+fn more(args: State<Args>, seek: u64, path: String) -> String {
     let mut output = "".to_string();
     match get_detail_render(&path, seek) {
         Ok(render) => {
-           if let Ok(a) =  serde_json::to_string(& render) {
-               output = a;
-           }
-        },
+            if let Ok(a) = serde_json::to_string(&render) {
+                output = a;
+            }
+        }
         Err(e) => {
             output = e.to_string();
         }
@@ -232,19 +265,18 @@ fn more(args: State<Args>, seek:u64, path:String) -> String {
     output
 }
 
-#[get("/search?<search>&<path>", rank = 3)]
-fn search(args: State<Args>, search:String, path:String) -> Template {
-    match get_search_render(&path, &search) {
+#[get("/search?<search>&<path>&<before>&<after>", rank = 3)]
+fn search(args: State<Args>, search: String, path: String, before:String, after:String) -> Template {
+    match get_search_render(&path, &search, &before, &after) {
         Ok(render) => {
-            return Template::render("index", render);
-        },
+            return Template::render("search", render);
+        }
         Err(e) => {
             let render = ErrorRender::new(e.to_string());
-            return Template::render("error", render);      
-        } 
+            return Template::render("error", render);
+        }
     };
 }
-
 
 #[get("/<name..>", rank = 4)]
 fn detail(args: State<Args>, name: PathBuf) -> Template {
@@ -253,19 +285,17 @@ fn detail(args: State<Args>, name: PathBuf) -> Template {
     let full_path = Path::new(&full_file_name);
     if (full_path.is_dir()) {
         match get_directory_info_render(&full_file_name) {
-            Ok(render) => {
-                return Template::render("index", render)
-            },
+            Ok(render) => return Template::render("index", render),
             Err(e) => {
                 let render = ErrorRender::new(e.to_string());
-                return Template::render("error", render);      
-            } 
+                return Template::render("error", render);
+            }
         };
     } else {
         match get_detail_render(&full_file_name, 0) {
             Ok(render) => {
                 return Template::render("detail", render);
-            },
+            }
             Err(e) => {
                 let render = ErrorRender::new(e.to_string());
                 return Template::render("error", render);
@@ -278,7 +308,7 @@ fn main() {
     let args: Args = parse_arguments();
     let app = rocket::ignite()
         .manage(args)
-        .mount("/", routes![index, detail, more])
+        .mount("/", routes![index, detail, more, search])
         .attach(Template::fairing());
     app.launch();
 }

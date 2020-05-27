@@ -1,0 +1,48 @@
+<head>
+    <style>
+        i {
+            font-style: normal;
+        }
+
+        .row {
+            color:gray;
+            font-size:12px;
+        }
+    </style>
+</head>
+<body>
+    <div id="content" style="display: none;">
+    {{ content }}
+</div>
+
+<div style="display: none;" id="search">
+    {{ search }}
+</div>
+<script src="https://cdnjs.gtimg.com/cdnjs/libs/zepto/1.1.4/zepto.min.js"></script>
+<script>
+    var content = '';
+    var search = '';
+    
+    function handleContent(content) {
+        var reg = new RegExp( search , "g" )
+        content = content.replace(reg, '<i style="color:red;">'+search+"</i>");
+        content = content.replace(/(\r|\n|\r\n)/g, '<br>');
+        var arr = content.split("<br>");
+        for(var i=0,len=arr.length; i<len; i++) {
+            arr[i] = arr[i].replace(/(^(\d+)(-|:))/, '<i class="row">$2</i>&nbsp;&nbsp;&nbsp;');
+        }
+        content = arr.join("<br>");
+
+        return content;
+    }
+
+    (function init() {
+        search = $("#search").text().trim();
+
+        content = $("#content").html().trim();
+        content = handleContent(content);
+        $("#content").html(content).show();
+    })();
+
+</script>
+</body>
