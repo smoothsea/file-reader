@@ -7,15 +7,11 @@ extern crate serde_derive;
 
 use chrono::offset::Utc;
 use chrono::DateTime;
-use grep::matcher::Matcher;
 use grep::regex::RegexMatcher;
-use grep::searcher::sinks::UTF8;
 use grep::searcher::{Searcher, SearcherBuilder};
-use grep::searcher::SinkContext;
 use grep::printer::Standard;
 use rocket::State;
 use rocket_contrib::templates::Template;
-use serde::{Deserialize, Serialize};
 use std::env;
 use std::error::Error;
 use std::fs::{self, File};
@@ -220,14 +216,18 @@ fn get_search_render(file_path: &str, search: &str, before: &str, after: &str) -
     searchBuild.multi_line(true);
     searchBuild.after_context(after_num);
     searchBuild.before_context(before_num);
-    println!("{}{}", after_num, before_num);
     searchBuild.build().search_file(
         &matcher,
         &file,
         printer.sink(&matcher),
     )?;
 
-    let mut content = String::from_utf8(printer.into_inner().into_inner())?;
+    let search_bytes = printer.into_inner().into_inner();
+    println!("{}", search_bytes.len());
+    if (search_bytes.len() > 10485760) {
+        return Err("搜索结果太大，请使用更准确的搜索词")?;
+    }
+    let mut content = String::from_utf8(search_bytes)?;
 
     Ok(SearchRender::new(
         content,

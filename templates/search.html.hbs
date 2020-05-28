@@ -4,6 +4,10 @@
             font-style: normal;
         }
 
+        body {
+            font-size: 13px;
+        }
+
         .row {
             color:gray;
             font-size:12px;
@@ -40,6 +44,7 @@
         search = $("#search").text().trim();
 
         content = $("#content").html().trim();
+        console.log(content);
         content = handleContent(content);
         $("#content").html(content).show();
     })();

@@ -1,44 +1,60 @@
-<form method="get" action="/search" target="_blank">
-全文搜索：
-<input type="text" name="search"> 
-<input type="text" name="before" value="50" placeholder="前xx行"> 
-<input type="text" name="after" value="50" placeholder="后xx行"> 
-<input type="hidden" name="path" value="{{ file_path }}">
-<input type="submit" value="搜索">
-</form>
-<br>
+<head>
+    <style>
+        body {
+            font-size: 13px;
+        }
 
-<div id="content">
-    {{ content }}
-</div>
+        i {
+            font-style: normal;
+        }
+    </style>
+</head>
+<body>
+    <i style="color: red;">备注：如果文件太大，可能只显示了部分数据。如果要查看相关内容，可以用如下的全文搜索</i>
+    <br>
+    <br>
+    <form method="get" action="/search" target="_blank">
+    全文搜索：
+    <input type="text" name="search"> 
+    <input type="text" name="before" value="50" placeholder="前xx行"> 
+    <input type="text" name="after" value="50" placeholder="后xx行"> 
+    <input type="hidden" name="path" value="{{ file_path }}">
+    <input type="submit" value="搜索">
+    </form>
+    <br>
 
-<script src="https://cdnjs.gtimg.com/cdnjs/libs/zepto/1.1.4/zepto.min.js"></script>
-<script>
-    var content = '';
-    var seek = {{ seek }};
-    var path = '{{ file_path }}';
-    
-    function handleContent(content) {
-        return content.replace(/(\r|\n|\r\n)/g, '<br>');
-    }
+    <div id="content">
+        {{ content }}
+    </div>
 
-    (function init() {
-        content = $("#content").html();
-        content = handleContent(content);
-        $("#content").html(content).show();
-    })();
+    <script src="https://cdnjs.gtimg.com/cdnjs/libs/zepto/1.1.4/zepto.min.js"></script>
+    <script>
+        var content = '';
+        var seek = {{ seek }};
+        var path = '{{ file_path }}';
+        
+        function handleContent(content) {
+            return content.replace(/(\r|\n|\r\n)/g, '<br>');
+        }
 
-    setInterval(function () {
-        $.ajax({
-            url: "/more?seek=" + seek + "&path=" + path,
-            dataType: "json",
-            success: function (data) {
-                if (data.content) {
-                    content = content + data.content;
-                    $("#content").html(handleContent(content));
-                    seek = data.seek;                   
+        (function init() {
+            content = $("#content").html();
+            content = handleContent(content);
+            $("#content").html(content).show();
+        })();
+
+        setInterval(function () {
+            $.ajax({
+                url: "/more?seek=" + seek + "&path=" + path,
+                dataType: "json",
+                success: function (data) {
+                    if (data.content) {
+                        content = content + data.content;
+                        $("#content").html(handleContent(content));
+                        seek = data.seek;                   
+                    }
                 }
-            }
-        });;
-    }, 5000);
-</script>
+            });;
+        }, 5000);
+    </script>
+</body>
