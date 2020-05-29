@@ -223,7 +223,6 @@ fn get_search_render(file_path: &str, search: &str, before: &str, after: &str) -
     )?;
 
     let search_bytes = printer.into_inner().into_inner();
-    println!("{}", search_bytes.len());
     if (search_bytes.len() > 10485760) {
         return Err("搜索结果太大，请使用更准确的搜索词")?;
     }
