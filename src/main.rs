@@ -429,8 +429,11 @@ fn parse_arguments() -> Args {
         )
         .get_matches();
 
-    let dir = matches.value_of("directory").unwrap().to_owned();
-    println!("{}", matches.is_present("username"));
+    let mut dir = matches.value_of("directory").unwrap().to_owned();
+    if !dir.ends_with("/") {
+        dir.push_str("/");
+    }
+
     let username = match matches.is_present("username") {
         true => Some(matches.value_of("username").unwrap().to_owned()),
         false => None,
