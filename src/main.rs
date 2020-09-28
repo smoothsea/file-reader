@@ -7,22 +7,36 @@ extern crate serde_derive;
 
 use chrono::offset::Utc;
 use chrono::DateTime;
-use grep::regex::RegexMatcher;
-use grep::searcher::{Searcher, SearcherBuilder};
+use clap::{App, Arg};
 use grep::printer::Standard;
+use grep::regex::RegexMatcher;
+use grep::searcher::SearcherBuilder;
+use rocket::http::Status;
+use rocket::request::{self, FromRequest, Request, Form};
+use rocket::response::{Redirect};
+use rocket::Outcome;
 use rocket::State;
 use rocket_contrib::templates::Template;
-use std::env;
 use std::error::Error;
 use std::fs::{self, File};
 use std::io::prelude::*;
 use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
 use std::str;
+use std::collections::HashMap;
+use rocket::http::{Cookies, Cookie};
 
-#[derive(Debug)]
+#[derive(FromForm, Debug)]
+struct Login {
+   username: String,
+   password: String, 
+}
+
+#[derive(Debug, Clone)]
 struct Args {
     file_dir: String,
+    username: Option<String>,
+    password: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -63,8 +77,12 @@ impl IndexRender {
 }
 
 impl Args {
-    fn new(file_dir: String) -> Args {
-        Args { file_dir: file_dir }
+    fn new(file_dir: String, username: Option<String>, password: Option<String>) -> Args {
+        Args {
+            file_dir,
+            username,
+            password,
+        }
     }
 }
 
@@ -113,23 +131,48 @@ impl SearchRender {
     }
 }
 
+struct Authorization;
+
+#[derive(Debug)]
+enum AuthorizationError {
+    NoAuth,
+}
+
+impl<'a, 'r> FromRequest<'a, 'r> for Authorization {
+    type Error = AuthorizationError;
+
+    fn from_request(request: &'a Request<'r>) -> request::Outcome<Self, Self::Error> {
+        let config = request.guard::<State<Args>>().unwrap();
+        match &config.username {
+            Some(_username) => {
+                if !is_auth(& mut request.cookies(), &config) {
+                    return Outcome::Failure((Status::Forbidden, AuthorizationError::NoAuth));
+                }
+            }
+            _ => {}
+        }
+
+        Outcome::Success(Authorization)
+    }
+}
+
 fn get_directory_info_render(dir: &str) -> Result<IndexRender, Box<dyn Error>> {
     let path = Path::new(dir);
-    let mut render = IndexRender::new(false, "目录配置错误".to_string(), vec![]);
-    if (path.is_dir()) {
+    let mut render;
+    if path.is_dir() {
         let mut elements: Vec<IndexElement> = vec![];
 
         for entry in fs::read_dir(path)? {
             let entry = entry?;
             let file_path = entry.path();
             let metadata = entry.metadata()?;
-            let mut file_name = file_path
+            let file_name = file_path
                 .file_name()
                 .unwrap()
                 .to_string_lossy()
                 .into_owned();
 
-            if (file_name.get(0..1) == Some(".")) {
+            if file_name.get(0..1) == Some(".") {
                 continue;
             }
 
@@ -137,8 +180,8 @@ fn get_directory_info_render(dir: &str) -> Result<IndexRender, Box<dyn Error>> {
             let atime: DateTime<Utc> = metadata.modified()?.into();
             let atime_string = atime.format("%Y-%m-%d %T").to_string();
 
-            let mut class = "".to_string();
-            if (file_path.is_dir()) {
+            let mut class;
+            if file_path.is_dir() {
                 class = "d".to_string();
             } else {
                 class = "f".to_string();
@@ -205,22 +248,25 @@ fn attemp_to_read_file(
     Ok((content, seek))
 }
 
-fn get_search_render(file_path: &str, search: &str, before: &str, after: &str) -> Result<SearchRender, Box<dyn Error>> {
+fn get_search_render(
+    file_path: &str,
+    search: &str,
+    before: &str,
+    after: &str,
+) -> Result<SearchRender, Box<dyn Error>> {
     let path = Path::new(file_path);
     let mut file = File::open(path)?;
     let matcher = RegexMatcher::new(search)?;
     let mut searchBuild = SearcherBuilder::new();
     let mut printer = Standard::new_no_color(vec![]);
-    let before_num:usize = before.parse()?;
-    let after_num:usize = after.parse()?;
+    let before_num: usize = before.parse()?;
+    let after_num: usize = after.parse()?;
     searchBuild.multi_line(true);
     searchBuild.after_context(after_num);
     searchBuild.before_context(before_num);
-    searchBuild.build().search_file(
-        &matcher,
-        &file,
-        printer.sink(&matcher),
-    )?;
+    searchBuild
+        .build()
+        .search_file(&matcher, &file, printer.sink(&matcher))?;
 
     let search_bytes = printer.into_inner().into_inner();
     if (search_bytes.len() > 10485760) {
@@ -235,8 +281,24 @@ fn get_search_render(file_path: &str, search: &str, before: &str, after: &str) -
     ))
 }
 
+fn is_auth(cookies: &mut Cookies, config:& Args) -> bool
+{
+    let config = config.to_owned().clone();
+    let username = cookies.get_private("username").map(|value| format!("{}", value));
+    config.username.map(|value| format!("username={}", value)) == username
+}
+
 #[get("/")]
-fn index(args: State<Args>) -> Template {
+fn auth(args: State<Args>, mut cookies:Cookies) -> Redirect {
+    if is_auth(&mut cookies, & *args) {
+        Redirect::to("/index")
+    } else {
+        Redirect::to("/login")
+    }
+}
+
+#[get("/index")]
+fn index(args: State<Args>, _auth: Authorization) -> Template {
     match get_directory_info_render(&args.file_dir) {
         Ok(render) => {
             return Template::render("index", render);
@@ -248,8 +310,29 @@ fn index(args: State<Args>) -> Template {
     };
 }
 
+#[get("/login")]
+fn login() -> Template {
+    Template::render("login", ErrorRender::new("".to_owned()))
+}
+
+#[post("/login", data="<login>")]
+fn do_login(args:State<Args>, login: Form<Login>, mut cookies:Cookies) -> String {
+    let args = (*args).clone();
+    let mut render:HashMap<String, String> = HashMap::new();
+    if  args.username.unwrap_or("".to_owned()) == login.username
+     && args.password.unwrap_or("".to_owned()) == login.password {
+        cookies.add_private(Cookie::new("username", login.username.clone()));
+        render.insert("status".to_owned(), "1".to_owned());
+    } else {
+        render.insert("status".to_owned(), "0".to_owned());
+        render.insert("msg".to_owned(), "帐号或密码错误".to_owned());
+    }
+    // login.username;
+    serde_json::to_string(&render).unwrap_or("{\"status\":\"0\"}".to_owned()) 
+}
+
 #[get("/more?<seek>&<path>", rank = 3)]
-fn more(args: State<Args>, seek: u64, path: String) -> String {
+fn more(seek: u64, path: String, _auth: Authorization) -> String {
     let mut output = "".to_string();
     match get_detail_render(&path, seek) {
         Ok(render) => {
@@ -265,7 +348,14 @@ fn more(args: State<Args>, seek: u64, path: String) -> String {
 }
 
 #[get("/search?<search>&<path>&<before>&<after>", rank = 3)]
-fn search(args: State<Args>, search: String, path: String, before:String, after:String) -> Template {
+fn search(
+    args: State<Args>,
+    search: String,
+    path: String,
+    before: String,
+    after: String,
+    _auth: Authorization
+) -> Template {
     match get_search_render(&path, &search, &before, &after) {
         Ok(render) => {
             return Template::render("search", render);
@@ -278,7 +368,7 @@ fn search(args: State<Args>, search: String, path: String, before:String, after:
 }
 
 #[get("/<name..>", rank = 4)]
-fn detail(args: State<Args>, name: PathBuf) -> Template {
+fn detail(args: State<Args>, name: PathBuf, _auth: Authorization) -> Template {
     let path = &args.file_dir;
     let full_file_name = format!("{}{}", path, name.to_string_lossy().into_owned());
     let full_path = Path::new(&full_file_name);
@@ -307,24 +397,50 @@ fn main() {
     let args: Args = parse_arguments();
     let app = rocket::ignite()
         .manage(args)
-        .mount("/", routes![index, detail, more, search])
+        .mount("/", routes![auth, index, detail, more, search, login, do_login])
         .attach(Template::fairing());
     app.launch();
 }
 
 fn parse_arguments() -> Args {
-    let args: Vec<String> = env::args().collect();
+    let matches = App::new("file_reader")
+        .version("1.0")
+        .author("smoothsea")
+        .arg(
+            Arg::with_name("directory")
+                .short("d")
+                .long("directory")
+                .help("查看文件的目录")
+                .required(true)
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("username")
+                .short("u")
+                .long("username")
+                .help("验证登录用户名")
+                .requires("password")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("password")
+                .short("p")
+                .long("password")
+                .help("验证用户密码")
+                .requires("username")
+                .takes_value(true),
+        )
+        .get_matches();
 
-    if (args.len() <= 1) {
-        panic!("Arguments can't be empty");
-    }
-    let mut file_dir: String = (&args[1]).to_string();
-    if let Some(o) = file_dir.pop() {
-        if (o.to_string() != "/".to_string()) {
-            println!("ok");
-            file_dir = format!("{}{}", file_dir, o.to_string());
-        }
-        file_dir = format!("{}{}", file_dir, "/".to_string());
+    let dir = matches.value_of("directory").unwrap().to_owned();
+    println!("{}", matches.is_present("username"));
+    let username = match matches.is_present("username") {
+        true => Some(matches.value_of("username").unwrap().to_owned()),
+        false => None,
     };
-    Args::new(file_dir)
+    let password = match matches.is_present("password") {
+        true => Some(matches.value_of("password").unwrap().to_owned()),
+        false => None,
+    };
+    Args::new(dir, username, password)
 }
