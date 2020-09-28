@@ -158,7 +158,7 @@ impl<'a, 'r> FromRequest<'a, 'r> for Authorization {
 
 fn get_directory_info_render(dir: &str) -> Result<IndexRender, Box<dyn Error>> {
     let path = Path::new(dir);
-    let mut render;
+    let render;
     if path.is_dir() {
         let mut elements: Vec<IndexElement> = vec![];
 
@@ -180,7 +180,7 @@ fn get_directory_info_render(dir: &str) -> Result<IndexRender, Box<dyn Error>> {
             let atime: DateTime<Utc> = metadata.modified()?.into();
             let atime_string = atime.format("%Y-%m-%d %T").to_string();
 
-            let mut class;
+            let class;
             if file_path.is_dir() {
                 class = "d".to_string();
             } else {
@@ -203,16 +203,16 @@ fn get_detail_render(file_path: &str, start_seek: u64) -> Result<DetailRender, B
     let file_len = metadata.len();
     let max_file_len = 5181440;
     let mut contents = String::new();
-    let mut seek = file_len;
-    if (file_len > max_file_len || start_seek > 0) {
+    let seek = file_len;
+    if file_len > max_file_len || start_seek > 0 {
         let len_if_exceed = 512000; //500kb
-        let mut read_start_seek: u64;
-        if (start_seek > 0) {
+        let read_start_seek: u64;
+        if start_seek > 0 {
             read_start_seek = start_seek;
         } else {
             read_start_seek = file_len - len_if_exceed;
         }
-        if let (a, b) = attemp_to_read_file(&mut file, read_start_seek, 3)? {
+        if let (a, _b) = attemp_to_read_file(&mut file, read_start_seek, 3)? {
             contents = a;
         }
     } else {
@@ -228,24 +228,21 @@ fn attemp_to_read_file(
     seek: u64,
     times: u8,
 ) -> Result<(String, u64), Box<dyn Error>> {
-    let mut content = "".to_string();
     let mut buff = vec![];
-    file.seek(SeekFrom::Start(seek));
-    file.read_to_end(&mut buff);
+    file.seek(SeekFrom::Start(seek))?;
+    file.read_to_end(&mut buff)?;
     match String::from_utf8(buff) {
         Ok(s) => {
             return Ok((s, seek));
         }
         Err(e) => {
-            if (times > 0) {
+            if times > 0 {
                 return attemp_to_read_file(file, seek + 1, times - 1);
             } else {
                 return Err(Box::new(e));
             }
         }
     }
-
-    Ok((content, seek))
 }
 
 fn get_search_render(
@@ -255,24 +252,24 @@ fn get_search_render(
     after: &str,
 ) -> Result<SearchRender, Box<dyn Error>> {
     let path = Path::new(file_path);
-    let mut file = File::open(path)?;
+    let file = File::open(path)?;
     let matcher = RegexMatcher::new(search)?;
-    let mut searchBuild = SearcherBuilder::new();
+    let mut search_build = SearcherBuilder::new();
     let mut printer = Standard::new_no_color(vec![]);
     let before_num: usize = before.parse()?;
     let after_num: usize = after.parse()?;
-    searchBuild.multi_line(true);
-    searchBuild.after_context(after_num);
-    searchBuild.before_context(before_num);
-    searchBuild
+    search_build.multi_line(true);
+    search_build.after_context(after_num);
+    search_build.before_context(before_num);
+    search_build
         .build()
         .search_file(&matcher, &file, printer.sink(&matcher))?;
 
     let search_bytes = printer.into_inner().into_inner();
-    if (search_bytes.len() > 10485760) {
+    if search_bytes.len() > 10485760 {
         return Err("搜索结果太大，请使用更准确的搜索词")?;
     }
-    let mut content = String::from_utf8(search_bytes)?;
+    let content = String::from_utf8(search_bytes)?;
 
     Ok(SearchRender::new(
         content,
@@ -349,7 +346,7 @@ fn more(seek: u64, path: String, _auth: Authorization) -> String {
 
 #[get("/search?<search>&<path>&<before>&<after>", rank = 3)]
 fn search(
-    args: State<Args>,
+    _args: State<Args>,
     search: String,
     path: String,
     before: String,
@@ -372,7 +369,7 @@ fn detail(args: State<Args>, name: PathBuf, _auth: Authorization) -> Template {
     let path = &args.file_dir;
     let full_file_name = format!("{}{}", path, name.to_string_lossy().into_owned());
     let full_path = Path::new(&full_file_name);
-    if (full_path.is_dir()) {
+    if full_path.is_dir() {
         match get_directory_info_render(&full_file_name) {
             Ok(render) => return Template::render("index", render),
             Err(e) => {
