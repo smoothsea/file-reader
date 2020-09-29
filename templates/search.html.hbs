@@ -26,11 +26,19 @@
 <script>
     var content = '';
     var search = '';
+    var replacements = {
+        "--replacement_blod_left--" : '<i style="color:red;">',
+        "--replacement_blod_right--" : '</i>',
+    };
     
     function handleContent(content) {
         var reg = new RegExp( search , "g" )
-        content = content.replace(reg, '<i style="color:red;">'+search+"</i>");
-        content = content.replace(/(\r|\n|\r\n)/g, '<br>');
+        content = content.replace(reg, "--replacement_blod_left--"+search+"--replacement_blod_right--")
+                    .replace(/(\r|\n|\r\n)/g, '<br>').replace(/\s/g, "&nbsp");
+        for (var i in replacements) {
+            var reg = new RegExp(i, "g");
+            content = content.replace(reg, replacements[i]);
+        }
         var arr = content.split("<br>");
         for(var i=0,len=arr.length; i<len; i++) {
             arr[i] = arr[i].replace(/(^(\d+)(-|:))/, '<i class="row">$2</i>&nbsp;&nbsp;&nbsp;');
@@ -44,7 +52,6 @@
         search = $("#search").text().trim();
 
         content = $("#content").html().trim();
-        console.log(content);
         content = handleContent(content);
         $("#content").html(content).show();
     })();

@@ -1,4 +1,5 @@
 <head>
+    <title>{{ file_path }}</title>
     <style>
         body {
             font-size: 13px;
@@ -8,52 +9,73 @@
             font-style: normal;
         }
     </style>
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/highlight.js/10.0.0/styles/default.min.css">
 </head>
+
 <body>
     <i style="color: red;">备注：如果文件太大，可能只显示了部分数据。如果要查看相关内容，可以用如下的全文搜索</i>
     <br>
     <br>
     <form method="get" action="/search" target="_blank">
-    全文搜索：
-    <input type="text" name="search"> 
-    <input type="text" name="before" value="10" placeholder="前xx行"> 
-    <input type="text" name="after" value="20" placeholder="后xx行"> 
-    <input type="hidden" name="path" value="{{ file_path }}">
-    <input type="submit" value="搜索">
+        全文搜索：
+        <input type="text" name="search">
+        <input type="text" name="before" value="10" placeholder="前xx行">
+        <input type="text" name="after" value="20" placeholder="后xx行">
+        <input type="hidden" name="path" value="{{ file_path }}">
+        <input type="submit" value="搜索">
     </form>
     <br>
 
-    <div id="content">
-        {{ content }}
-    </div>
+    <span class="load">加载中...</span>
+    <div id="content" style="display: none;">{{ content }}</div>
 
+    <script src="https://cdn.bootcdn.net/ajax/libs/highlight.js/10.0.0/highlight.min.js"></script>
     <script src="https://cdnjs.gtimg.com/cdnjs/libs/zepto/1.1.4/zepto.min.js"></script>
     <script>
         var content = '';
         var seek = {{ seek }};
         var path = '{{ file_path }}';
-        
+
         function handleContent(content) {
-            return content.replace(/(\r|\n|\r\n)/g, '<br>');
+            return content.replace(/(\r\n|\r|\n)/g, '<br>').replace(/\s/g, '&nbsp');
+        }
+
+        function is_code() {
+            var file = location.href.replace(/\/$/, "").split("/").pop();
+            var suffix = file.split(".").pop();
+            if (suffix !== undefined && ["php", "rs", "js", "html"].indexOf(suffix) >= 0) {
+                return true;
+            }
+            return false;
         }
 
         (function init() {
             content = $("#content").html();
-            content = handleContent(content);
+            if (is_code()) {
+                content = '<pre><code>'+content+'</code></pre>';
+            } else {
+                content = handleContent(content);
+                setInterval(function () {
+                    $.ajax({
+                        url: "/more?seek=" + seek + "&path=" + path,
+                        dataType: "json",
+                        success: function (data) {
+                            if (data.content) {
+                                $("#content").append(handleContent(data.content));
+                                seek = data.seek;
+                            }
+                        }
+                    });;
+                }, 5000);
+            }
+
             $("#content").html(content).show();
+            $(".load").hide();
+            if (is_code()) {
+                hljs.initHighlightingOnLoad();
+            }
         })();
 
-        setInterval(function () {
-            $.ajax({
-                url: "/more?seek=" + seek + "&path=" + path,
-                dataType: "json",
-                success: function (data) {
-                    if (data.content) {
-                        $("#content").append(handleContent(data.content));
-                        seek = data.seek;                   
-                    }
-                }
-            });;
-        }, 5000);
+
     </script>
 </body>
