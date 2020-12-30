@@ -12,24 +12,26 @@ use grep::printer::Standard;
 use grep::regex::RegexMatcher;
 use grep::searcher::SearcherBuilder;
 use rocket::http::Status;
-use rocket::request::{self, FromRequest, Request, Form};
-use rocket::response::{Redirect};
+use rocket::http::{Cookie, Cookies};
+use rocket::request::{self, Form, FromRequest, Request};
+use rocket::response::Redirect;
 use rocket::Outcome;
 use rocket::State;
 use rocket_contrib::templates::Template;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fs::{self, File};
 use std::io::prelude::*;
 use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
 use std::str;
-use std::collections::HashMap;
-use rocket::http::{Cookies, Cookie};
+
+static mut GLOBAL_ARGS: Option<Args> = None;
 
 #[derive(FromForm, Debug)]
 struct Login {
-   username: String,
-   password: String, 
+    username: String,
+    password: String,
 }
 
 #[derive(Debug, Clone)]
@@ -63,15 +65,22 @@ struct IndexRender {
     status: bool,
     info: String,
     list: String,
+    file_path: Option<String>,
 }
 
 impl IndexRender {
-    fn new(status: bool, info: String, list: Vec<IndexElement>) -> IndexRender {
+    fn new(
+        status: bool,
+        info: String,
+        list: Vec<IndexElement>,
+        file_path: Option<String>,
+    ) -> IndexRender {
         let list_json = serde_json::to_string(&list).expect("error");
         IndexRender {
             status,
             info,
             list: list_json,
+            file_path,
         }
     }
 }
@@ -145,7 +154,7 @@ impl<'a, 'r> FromRequest<'a, 'r> for Authorization {
         let config = request.guard::<State<Args>>().unwrap();
         match &config.username {
             Some(_username) => {
-                if !is_auth(& mut request.cookies(), &config) {
+                if !is_auth(&mut request.cookies(), &config) {
                     return Outcome::Failure((Status::Forbidden, AuthorizationError::NoAuth));
                 }
             }
@@ -156,7 +165,26 @@ impl<'a, 'r> FromRequest<'a, 'r> for Authorization {
     }
 }
 
+fn get_complete_directory(dir: &str) -> String {
+    unsafe {
+        let base_dir = GLOBAL_ARGS.clone().unwrap().file_dir;
+        if dir.contains(&base_dir) {
+            dir.to_owned()
+        } else {
+            format!("{}{}", base_dir, dir)
+        }
+    }
+}
+
+fn directory_filter(dir: String) -> String {
+    unsafe {
+        let base_dir = GLOBAL_ARGS.clone().unwrap().file_dir;
+        dir.replace(&base_dir, "")
+    }
+}
+
 fn get_directory_info_render(dir: &str) -> Result<IndexRender, Box<dyn Error>> {
+    let dir = &get_complete_directory(dir);
     let path = Path::new(dir);
     let render;
     if path.is_dir() {
@@ -188,15 +216,21 @@ fn get_directory_info_render(dir: &str) -> Result<IndexRender, Box<dyn Error>> {
             }
             elements.push(IndexElement::new(class, file_name, atime_string, len));
         }
-        render = IndexRender::new(true, "".to_string(), elements);
+        render = IndexRender::new(
+            true,
+            "".to_string(),
+            elements,
+            Some(directory_filter(path.to_str().unwrap_or("").to_string())),
+        );
     } else {
-        render = IndexRender::new(false, "目录配置错误".to_string(), vec![]);
+        render = IndexRender::new(false, "目录配置错误".to_string(), vec![], None);
     }
 
     Ok(render)
 }
 
 fn get_detail_render(file_path: &str, start_seek: u64) -> Result<DetailRender, Box<dyn Error>> {
+    let file_path = &get_complete_directory(file_path);
     let path = Path::new(file_path);
     let mut file = File::open(path)?;
     let metadata = file.metadata()?;
@@ -219,7 +253,7 @@ fn get_detail_render(file_path: &str, start_seek: u64) -> Result<DetailRender, B
         file.read_to_string(&mut contents)?;
     }
 
-    let render = DetailRender::new(contents, file_path.to_string(), seek);
+    let render = DetailRender::new(contents, directory_filter(file_path.to_string()), seek);
     Ok(render)
 }
 
@@ -251,25 +285,51 @@ fn get_search_render(
     before: &str,
     after: &str,
 ) -> Result<SearchRender, Box<dyn Error>> {
+    let file_path = &get_complete_directory(file_path);
     let path = Path::new(file_path);
-    let file = File::open(path)?;
-    let matcher = RegexMatcher::new(search)?;
-    let mut search_build = SearcherBuilder::new();
-    let mut printer = Standard::new_no_color(vec![]);
-    let before_num: usize = before.parse()?;
-    let after_num: usize = after.parse()?;
-    search_build.multi_line(true);
-    search_build.after_context(after_num);
-    search_build.before_context(before_num);
-    search_build
-        .build()
-        .search_file(&matcher, &file, printer.sink(&matcher))?;
+    let single_page_limit = 10485760;
+    let mut size_limit = 0;
+    let mut content = "".to_string();
+    if path.is_dir() {
+        for entry in fs::read_dir(path)? {
+            let entry = entry?;
+            let path = entry.path();
+            if !path.is_dir() {
+                let ret = get_search_render(path.to_str().unwrap(), search, before, after);
+                if let Ok(render) = ret {
+                    if render.content.len() > 0 {
+                        size_limit = size_limit + single_page_limit;
+                        content = format!(
+                            "{}\r\n\r\n\r\n\r\n{}\r\n\r\n{}",
+                            content,
+                            directory_filter(path.to_str().unwrap().to_string()),
+                            render.content
+                        );
+                    }
+                }
+            }
+        }
+    } else {
+        let file = File::open(path)?;
+        let matcher = RegexMatcher::new(search)?;
+        let mut search_build = SearcherBuilder::new();
+        let mut printer = Standard::new_no_color(vec![]);
+        let before_num: usize = before.parse()?;
+        let after_num: usize = after.parse()?;
+        size_limit = single_page_limit;
+        search_build.multi_line(true);
+        search_build.after_context(after_num);
+        search_build.before_context(before_num);
+        search_build
+            .build()
+            .search_file(&matcher, &file, printer.sink(&matcher))?;
+        let search_bytes = printer.into_inner().into_inner();
+        content = String::from_utf8(search_bytes)?;
+    }
 
-    let search_bytes = printer.into_inner().into_inner();
-    if search_bytes.len() > 10485760 {
+    if content.len() > size_limit {
         return Err("搜索结果太大，请使用更准确的搜索词")?;
     }
-    let content = String::from_utf8(search_bytes)?;
 
     Ok(SearchRender::new(
         content,
@@ -278,16 +338,17 @@ fn get_search_render(
     ))
 }
 
-fn is_auth(cookies: &mut Cookies, config:& Args) -> bool
-{
+fn is_auth(cookies: &mut Cookies, config: &Args) -> bool {
     let config = config.to_owned().clone();
-    let username = cookies.get_private("username").map(|value| format!("{}", value));
+    let username = cookies
+        .get_private("username")
+        .map(|value| format!("{}", value));
     config.username.map(|value| format!("username={}", value)) == username
 }
 
 #[get("/")]
-fn auth(args: State<Args>, mut cookies:Cookies) -> Redirect {
-    if is_auth(&mut cookies, & *args) {
+fn auth(args: State<Args>, mut cookies: Cookies) -> Redirect {
+    if is_auth(&mut cookies, &*args) {
         Redirect::to("/index")
     } else {
         Redirect::to("/login")
@@ -312,12 +373,13 @@ fn login() -> Template {
     Template::render("login", ErrorRender::new("".to_owned()))
 }
 
-#[post("/login", data="<login>")]
-fn do_login(args:State<Args>, login: Form<Login>, mut cookies:Cookies) -> String {
+#[post("/login", data = "<login>")]
+fn do_login(args: State<Args>, login: Form<Login>, mut cookies: Cookies) -> String {
     let args = (*args).clone();
-    let mut render:HashMap<String, String> = HashMap::new();
-    if  args.username.unwrap_or("".to_owned()) == login.username
-     && args.password.unwrap_or("".to_owned()) == login.password {
+    let mut render: HashMap<String, String> = HashMap::new();
+    if args.username.unwrap_or("".to_owned()) == login.username
+        && args.password.unwrap_or("".to_owned()) == login.password
+    {
         cookies.add_private(Cookie::new("username", login.username.clone()));
         render.insert("status".to_owned(), "1".to_owned());
     } else {
@@ -325,7 +387,7 @@ fn do_login(args:State<Args>, login: Form<Login>, mut cookies:Cookies) -> String
         render.insert("msg".to_owned(), "帐号或密码错误".to_owned());
     }
     // login.username;
-    serde_json::to_string(&render).unwrap_or("{\"status\":\"0\"}".to_owned()) 
+    serde_json::to_string(&render).unwrap_or("{\"status\":\"0\"}".to_owned())
 }
 
 #[get("/more?<seek>&<path>", rank = 3)]
@@ -351,7 +413,7 @@ fn search(
     path: String,
     before: String,
     after: String,
-    _auth: Authorization
+    _auth: Authorization,
 ) -> Template {
     match get_search_render(&path, &search, &before, &after) {
         Ok(render) => {
@@ -392,9 +454,15 @@ fn detail(args: State<Args>, name: PathBuf, _auth: Authorization) -> Template {
 
 fn main() {
     let args: Args = parse_arguments();
+    unsafe {
+        GLOBAL_ARGS = Some(args.clone());
+    }
     let app = rocket::ignite()
         .manage(args)
-        .mount("/", routes![auth, index, detail, more, search, login, do_login])
+        .mount(
+            "/",
+            routes![auth, index, detail, more, search, login, do_login],
+        )
         .attach(Template::fairing());
     app.launch();
 }

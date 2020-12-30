@@ -1,6 +1,14 @@
 <h2>文件目录</h2>
 
 {{#if status}}
+<form method="get" action="/search" target="_blank">
+    全文搜索：
+    <input type="text" name="search">
+    <input type="text" name="before" value="10" placeholder="前xx行">
+    <input type="text" name="after" value="20" placeholder="后xx行">
+    <input type="hidden" name="path" value="{{ file_path }}">
+    <input type="submit" value="搜索">
+</form>
 <table id="main" style="width: 100%;">
     <thead>
         <td class="name">文件名</td>
