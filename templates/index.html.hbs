@@ -1,112 +1,120 @@
-<h2>文件目录</h2>
+<html>
+<head>
+    <meta name=renderer content=webkit>
+    <title>文件夹</title>
+</head>
+<body>
+    <h2>文件目录</h2>
 
-{{#if status}}
-<form method="get" action="/search" target="_blank">
-    全文搜索：
-    <input type="text" name="search">
-    <input type="text" name="before" value="10" placeholder="前xx行">
-    <input type="text" name="after" value="20" placeholder="后xx行">
-    <input type="hidden" name="path" value="{{ file_path }}">
-    <input type="submit" value="搜索">
-</form>
-<table id="main" style="width: 100%;">
-    <thead>
-        <td class="name">文件名</td>
-        <td class="size">文件大小</td>
-        <td class="date">时间</td>
-    </thead>
-    <tbody id="tbody">
-    </tbody>
-</table>
-{{~^~}}
-{{info}}
-{{/if~}}
+    {{#if status}}
+    <form method="get" action="/search" target="_blank">
+        全文搜索：
+        <input type="text" name="search">
+        <input type="text" name="before" value="10" placeholder="前xx行">
+        <input type="text" name="after" value="20" placeholder="后xx行">
+        <input type="hidden" name="path" value="{{ file_path }}">
+        <input type="submit" value="搜索">
+    </form>
+    <table id="main" style="width: 100%;">
+        <thead>
+            <td class="name">文件名</td>
+            <td class="size">文件大小</td>
+            <td class="date">时间</td>
+        </thead>
+        <tbody id="tbody">
+        </tbody>
+    </table>
+    {{~^~}}
+    {{info}}
+    {{/if~}}
 
-<div id="data" style="display: none;">
-    {{ list }}
-</div>
-<script>
-(function (w, d) {
-    var list;
-    var sort = {
-        field: "name",
-        order: "asc",
-    };
+    <div id="data" style="display: none;">
+        {{ list }}
+    </div>
+    <script>
+        (function (w, d) {
+            var list;
+            var sort = {
+                field: "name",
+                order: "asc",
+            };
 
-    var tbody = document.getElementById("tbody");
-    var data = document.getElementById("data");
+            var tbody = document.getElementById("tbody");
+            var data = document.getElementById("data");
 
-    var main = d.getElementById("main");
-    list = JSON.parse(data.innerText);
-    init();
-
-    var headers = d.getElementsByTagName("thead")[0].getElementsByTagName("td");
-    for (var i=0,len=headers.length; i<len; i++) {
-        var element = headers[i];
-        element.onclick = function (e) {
-            var type = e.target.className;
-            if (sort.field == type) {
-                sort.order = sort.order == "asc" ? "desc" : "asc";
-            } else {
-                sort.field = type;
-                sort.order = "asc";
-            }
-
+            var main = d.getElementById("main");
+            list = JSON.parse(data.innerText);
             init();
-        }
-    }
 
-    function init() {
-        var tArray = list;
-        tArray.sort(function (a, b) {
-            var comparedContent1 = "";
-            var comparedContent2 = "";
-            if (sort.field == "name") {
-                comparedContent1 = a.class + "-" + a.name;
-                comparedContent2 = b.class + "-" + b.name;
-            } else {
-                comparedContent1 = a[sort.field];
-                comparedContent2 = b[sort.field];
+            var headers = d.getElementsByTagName("thead")[0].getElementsByTagName("td");
+            for (var i = 0, len = headers.length; i < len; i++) {
+                var element = headers[i];
+                element.onclick = function (e) {
+                    var type = e.target.className;
+                    if (sort.field == type) {
+                        sort.order = sort.order == "asc" ? "desc" : "asc";
+                    } else {
+                        sort.field = type;
+                        sort.order = "asc";
+                    }
+
+                    init();
+                }
             }
 
-            if (sort.order == "desc") {
-                $t = comparedContent1;
-                comparedContent1 = comparedContent2;
-                comparedContent2 = t;
+            function init() {
+                var tArray = list;
+                tArray.sort(function (a, b) {
+                    var comparedContent1 = "";
+                    var comparedContent2 = "";
+                    if (sort.field == "name") {
+                        comparedContent1 = a.class + "-" + a.name;
+                        comparedContent2 = b.class + "-" + b.name;
+                    } else {
+                        comparedContent1 = a[sort.field];
+                        comparedContent2 = b[sort.field];
+                    }
+
+                    if (sort.order == "desc") {
+                        $t = comparedContent1;
+                        comparedContent1 = comparedContent2;
+                        comparedContent2 = t;
+                    }
+
+                    return comparedContent1 > comparedContent2 ? 1 : (comparedContent1 == comparedContent2 ? 0 : -1);
+                });
+
+                var html = "";
+                for (i = 0, len = tArray.length; i < len; i++) {
+                    var t = byteToText(tArray[i]["size"]);
+                    html += "<tr>"
+                        + "<td>" + "[" + tArray[i]["class"] + '] <a href="./' + tArray[i]["name"] + '/">' + tArray[i]["name"] + "</a></td>"
+                        + "<td>" + t + "</td>"
+                        + "<td>" + tArray[i]["date"] + "</td>"
+                        + "</tr>";
+                }
+                tbody.innerHTML = html;
             }
 
-            return comparedContent1 > comparedContent2 ? 1 : (comparedContent1 == comparedContent2 ? 0 : -1);
-        });
+            function byteToText(bytes) {
+                if (isNaN(bytes)) {
+                    return '';
+                }
+                var symbols = ['b', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+                var exp = Math.floor(Math.log(bytes) / Math.log(2));
+                if (exp < 1) {
+                    exp = 0;
+                }
+                var i = Math.floor(exp / 10);
+                bytes = bytes / Math.pow(2, 10 * i);
 
-        var html = "";
-        for (i=0,len=tArray.length; i<len; i++) {
-            var t = byteToText(tArray[i]["size"]);
-            html += "<tr>"
-                    +"<td>"+"["+tArray[i]["class"]+'] <a href="./'+tArray[i]["name"]+'/">'+tArray[i]["name"]+"</a></td>"
-                    +"<td>"+t+"</td>"
-                    +"<td>"+tArray[i]["date"]+"</td>"
-                    +"</tr>";
-        }
-        tbody.innerHTML = html;
-    }
+                if (bytes.toString().length > bytes.toFixed(2).toString().length) {
+                    bytes = bytes.toFixed(2);
+                }
+                return bytes + symbols[i];
+            }
+        })(window, document)
+    </script>
+</body>
 
-    function byteToText(bytes)
-    {
-        if (isNaN(bytes)) {
-                return '';
-            }
-            var symbols = ['b', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
-            var exp = Math.floor(Math.log(bytes)/Math.log(2));
-            if (exp < 1) {
-                exp = 0;
-            }
-            var i = Math.floor(exp / 10);
-            bytes = bytes / Math.pow(2, 10 * i);
-
-            if (bytes.toString().length > bytes.toFixed(2).toString().length) {
-                bytes = bytes.toFixed(2);
-            }
-            return bytes + symbols[i];
-    }
-})(window, document)
-</script>
+</html>

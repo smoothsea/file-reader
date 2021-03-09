@@ -14,9 +14,10 @@ serde_json = "1.0"
 chrono = "0.4.11"
 grep = "0.2.6"
 clap = "2.33.3"
+reqwest = "0.9.22"
 
 [dependencies.rocket_contrib]
 version = "0.4.4"
 default-features = false
-features = ["handlebars_templates"]
+features = ["handlebars_templates", "serve", "json"]
 

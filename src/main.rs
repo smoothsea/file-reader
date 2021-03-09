@@ -18,6 +18,8 @@ use rocket::response::Redirect;
 use rocket::Outcome;
 use rocket::State;
 use rocket_contrib::templates::Template;
+use rocket_contrib::serve::StaticFiles;
+use rocket_contrib::json::Json;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs::{self, File};
@@ -25,6 +27,8 @@ use std::io::prelude::*;
 use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
 use std::str;
+use reqwest::Client;
+use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE, COOKIE};
 
 static mut GLOBAL_ARGS: Option<Args> = None;
 
@@ -373,6 +377,11 @@ fn login() -> Template {
     Template::render("login", ErrorRender::new("".to_owned()))
 }
 
+#[get("/debug")]
+fn debug() -> Template {
+    Template::render("debug", ErrorRender::new("".to_owned()))
+}
+
 #[post("/login", data = "<login>")]
 fn do_login(args: State<Args>, login: Form<Login>, mut cookies: Cookies) -> String {
     let args = (*args).clone();
@@ -426,7 +435,7 @@ fn search(
     };
 }
 
-#[get("/<name..>", rank = 4)]
+#[get("/<name..>", rank = 100)]
 fn detail(args: State<Args>, name: PathBuf, _auth: Authorization) -> Template {
     let path = &args.file_dir;
     let full_file_name = format!("{}{}", path, name.to_string_lossy().into_owned());
@@ -452,6 +461,48 @@ fn detail(args: State<Args>, name: PathBuf, _auth: Authorization) -> Template {
     }
 }
 
+#[derive(Deserialize, Debug)]
+struct DebugAgent {
+    uri: String,
+    json: String,
+    cookie: String,  
+}
+
+#[post("/debug_agent", data = "<params>")]
+fn debug_agent(params: Json<DebugAgent>) -> String {
+    let client = Client::new();
+    let mut content = HashMap::new();
+    let mut headers = HeaderMap::new();
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    headers.insert(COOKIE, HeaderValue::from_static(string_to_static_str(params.cookie.clone())));
+
+    match client.post(&(params.uri))
+        .headers(headers)
+        .body(params.json.clone())
+        .send() {
+        Ok(mut res) => {
+            let mut body:String = "".to_string();
+            res.read_to_string(&mut body).unwrap();
+
+            content.insert("headers", format!("{:?}", res.headers()));
+            content.insert("http_status", res.status().to_string());
+            content.insert("status", "1".to_string());
+            content.insert("message", "ok".to_string());
+            content.insert("data", body);
+        },
+        Err(e) => {
+            content.insert("status", "0".to_string());
+            content.insert("message", e.to_string());
+        },  
+    }
+        
+    serde_json::to_string(&content).unwrap_or("{\"status\":\"0\"}".to_owned())
+}
+
+fn string_to_static_str(s: String) -> &'static str {
+    Box::leak(s.into_boxed_str())
+}
+
 fn main() {
     let args: Args = parse_arguments();
     unsafe {
@@ -461,8 +512,9 @@ fn main() {
         .manage(args)
         .mount(
             "/",
-            routes![auth, index, detail, more, search, login, do_login],
+            routes![auth, index, detail, more, search, login, do_login, debug, debug_agent],
         )
+        .mount("/public", StaticFiles::from("./templates/static"))
         .attach(Template::fairing());
     app.launch();
 }

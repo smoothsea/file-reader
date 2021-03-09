@@ -1,4 +1,5 @@
 <head>
+    <meta name=renderer content=webkit>
     <title>{{ file_path }}</title>
     <style>
         body {
@@ -9,7 +10,7 @@
             font-style: normal;
         }
     </style>
-    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/highlight.js/10.0.0/styles/default.min.css">
+    <link rel="stylesheet" href="/public/default.min.css">
 </head>
 
 <body>
@@ -29,15 +30,19 @@
     <span class="load">加载中...</span>
     <div id="content" style="display: none;">{{ content }}</div>
 
-    <script src="https://cdn.bootcdn.net/ajax/libs/highlight.js/10.0.0/highlight.min.js"></script>
-    <script src="https://cdnjs.gtimg.com/cdnjs/libs/zepto/1.1.4/zepto.min.js"></script>
+    <script src="/public/highlight.min.js"></script>
+    <script src="/public/zepto.js"></script>
     <script>
         var content = '';
         var seek = {{ seek }};
         var path = '{{ file_path }}';
 
         function handleContent(content) {
-            return content.replace(/(\r\n|\r|\n)/g, '<br>').replace(/\s/g, '&nbsp');
+            var content = content.replace(/(\r\n|\r|\n)/g, '<br/>').replace(/\s/g, '&nbsp')
+                .replace(/(请求地址:(&nbsp)*(.*?)(<br\/>)+json:(&nbsp)*(.*?)(<br\/>)+)/g, function (match, p1, p2, p3, p4, p5, p6) {
+                        return '<a target="blank" href="/debug?uri='+encodeURIComponent(p3)+'&json='+encodeURIComponent(p6)+'">调试</a><br/>'+p1;
+                });
+            return content;
         }
 
         function is_code() {
@@ -52,7 +57,7 @@
         (function init() {
             content = $("#content").html();
             if (is_code()) {
-                content = '<pre><code>'+content+'</code></pre>';
+                content = '<pre><code>' + content + '</code></pre>';
             } else {
                 content = handleContent(content);
                 setInterval(function () {

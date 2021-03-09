@@ -1,0 +1,149 @@
+<html>
+
+<head>
+    <meta name=renderer content=webkit>
+    <title>接口调试</title>
+    <style>
+        .debug div {
+            margin-bottom: 20px;
+        }
+
+        .debug div div {
+            float: left;
+        }
+
+        .debug div>div {
+            width: 110px;
+        }
+    </style>
+</head>
+
+<body>
+    <form name="debug" class="debug">
+        <div>
+            <div>URI:</div> <input type="text" name="uri" style="width: 550px;">
+        </div>
+        <div>
+            <div>POST json:</div> <textarea name="json" style="width: 550px;height:300px"></textarea>
+        </div>
+        <div>
+            <div>COOKIE:</div> <textarea name="cookie" style="width: 550px;height:100px"></textarea>
+        </div>
+        <div>
+            <div>使用后端代理:</div>
+            <div>
+                是<input type="radio" name="isAgent" value="1" checked>
+                否<input type="radio" name="isAgent" value="0">
+            </div>
+        </div>
+        <br>
+        <br>
+        <br>
+        <div>
+            <div></div>
+            <button type="submit">提交</button>
+        </div>
+    </form>
+
+    <hr>
+    <div>
+        请求结果:
+        <br /><br />
+        <div class="info"></div>
+        <div>
+        </div>
+    </div>
+    <script src="/public/zepto.js"></script>
+    <script>
+        $("form").submit(function () {
+            var uri = $("input[name='uri']").val();
+            var json = $("textarea[name='json']").val();
+            var isAgent = $("input[name='isAgent']:checked").val();
+            var cookie = $("textarea[name='cookie']").val();
+            var info = "";
+            var submitButton = $("form button");
+            submitButton.attr("disabled", "true");
+
+            var data, url;
+            if (isAgent == 1) {
+                data = JSON.stringify({
+                    json: json,
+                    uri: uri,
+                    cookie: cookie,
+                });
+
+                url = "/debug_agent";
+            } else {
+                data = json;
+                url = uri;
+            }
+
+            try {
+                $.ajax({
+                    url: url,
+                    data: data,
+                    type: "POST",
+                    contentType: "application/json",
+                    success: function (res, status, xhr) {
+                        if (isAgent == 1) {
+                           res = JSON.parse(res);
+                           if (res.status == 1) {
+                                var headers = JSON.parse(res.headers);
+                                info = "响应码: " + res.http_status + "<br/>" +
+                                       "响应结果: " + res.data + "<br/>" + 
+                                       "响应头: " + res.headers + "<br/>";
+                           } else {
+                                info = "错误信息: " + res.message;
+                           }
+                        } else {
+                            if (typeof res == "object") {
+                                res = JSON.stringify(res);
+                            }
+                            info = "响应码: " + xhr.status + " " + xhr.statusText + "<br/>" +
+                                    "响应结果: " + res + "<br/>" + 
+                                    "响应头: " + xhr.getAllResponseHeaders() + "<br/>";
+                        }
+                    },
+                    error: function (xhr, err, exc) {
+                        info = "错误信息: " + err + "-----" + exc;
+                    },
+                    complete: function (res) {
+                        $(".info").html(info);
+
+                        submitButton.removeAttr("disabled");
+                    },
+                });
+            } catch (e) {
+                $(".info").html(e.toString());
+                submitButton.removeAttr("disabled");
+            }
+
+            return false;
+        });
+
+        $("input[name='isAgent']").change(function (val) {
+            var textEle = $("textarea[name='cookie']");
+            if ($(this).val() == 0) {
+                textEle.val("");
+                textEle.attr("placeholder", "非后端代理下禁用cookie");
+                textEle.attr("readonly", "readonly");
+            } else {
+                textEle.removeAttr("placeholder");
+                textEle.removeAttr("readonly");
+            }
+        });
+
+        (function () {
+            var paramString = location.href.split("?")[1].split("&");
+            var params = [];
+            for (var i = 0, len = paramString.length; i < len; i++) {
+                var t = paramString[i].split("=");
+                params[t[0]] = decodeURIComponent(t[1]);
+            }
+            $("input[name='uri']").val(params["uri"]);
+            $("textarea[name='json']").val(params["json"]);
+        })()
+    </script>
+</body>
+
+</html>
