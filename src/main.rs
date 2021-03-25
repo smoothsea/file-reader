@@ -9,7 +9,7 @@ use chrono::offset::Utc;
 use chrono::DateTime;
 use clap::{App, Arg};
 use grep::printer::Standard;
-use grep::regex::RegexMatcher;
+use grep::regex::RegexMatcherBuilder;
 use grep::searcher::SearcherBuilder;
 use rocket::http::Status;
 use rocket::http::{Cookie, Cookies};
@@ -288,6 +288,7 @@ fn get_search_render(
     search: &str,
     before: &str,
     after: &str,
+    case_insensitive: bool
 ) -> Result<SearchRender, Box<dyn Error>> {
     let file_path = &get_complete_directory(file_path);
     let path = Path::new(file_path);
@@ -299,7 +300,7 @@ fn get_search_render(
             let entry = entry?;
             let path = entry.path();
             if !path.is_dir() {
-                let ret = get_search_render(path.to_str().unwrap(), search, before, after);
+                let ret = get_search_render(path.to_str().unwrap(), search, before, after, case_insensitive);
                 if let Ok(render) = ret {
                     if render.content.len() > 0 {
                         size_limit = size_limit + single_page_limit;
@@ -315,7 +316,9 @@ fn get_search_render(
         }
     } else {
         let file = File::open(path)?;
-        let matcher = RegexMatcher::new(search)?;
+        let mut matcher = RegexMatcherBuilder::new();
+        matcher.case_insensitive(case_insensitive);
+        let matcher = matcher.build(search)?;
         let mut search_build = SearcherBuilder::new();
         let mut printer = Standard::new_no_color(vec![]);
         let before_num: usize = before.parse()?;
@@ -415,16 +418,21 @@ fn more(seek: u64, path: String, _auth: Authorization) -> String {
     output
 }
 
-#[get("/search?<search>&<path>&<before>&<after>", rank = 3)]
+#[get("/search?<search>&<path>&<before>&<after>&<case_sensitive>", rank = 3)]
 fn search(
     _args: State<Args>,
     search: String,
     path: String,
     before: String,
     after: String,
+    case_sensitive: bool,
     _auth: Authorization,
 ) -> Template {
-    match get_search_render(&path, &search, &before, &after) {
+    let case_insensitive = match case_sensitive {
+        true => false,
+        false => true
+    };
+    match get_search_render(&path, &search, &before, &after, case_insensitive) {
         Ok(render) => {
             return Template::render("search", render);
         }

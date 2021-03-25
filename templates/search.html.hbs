@@ -1,4 +1,5 @@
 <html>
+
 <head>
     <meta name=renderer content=webkit>
     <title>搜索</title>
@@ -12,64 +13,78 @@
         }
 
         .row {
-            color:gray;
-            font-size:12px;
+            color: gray;
+            font-size: 12px;
         }
     </style>
 </head>
+
 <body>
     <div id="content" style="display: none;">
-    {{ content }}
-</div>
+        {{ content }}
+    </div>
 
-<div style="display: none;" id="search">
-    {{ search }}
-</div>
-<script src="/public/zepto.js"></script>
-<script>
-    var content = '';
-    var search = '';
-    var replacements = {
-        "--replacement_blod_left--" : '<i style="color:red;">',
-        "--replacement_blod_right--" : '</i>',
-    };
-    
-    function handleContent(content) {
-        var reg = new RegExp(search, "g");
-        var tagPlaceholder = "p]l]a]c]e]h]o]l]d]e]r";
-        content = content.replace(/(\r|\n|\r\n)/g, '<br>').replace(/\s/g, "&nbsp")
+    <div style="display: none;" id="search">
+        {{ search }}
+    </div>
+    <script src="/public/zepto.js"></script>
+    <script>
+        var content = '';
+        var search = '';
+        var replacements = {
+            "--replacement_blod_left--": '<i style="color:red;">',
+            "--replacement_blod_right--": '</i>',
+        };
+
+        function handleContent(content, caseSensitive) {
+            var flag = caseSensitive ? "g" : "gi";
+            var reg = new RegExp(search, flag);
+            var tagPlaceholder = "p]l]a]c]e]h]o]l]d]e]r";
+            content = content.replace(/(\r|\n|\r\n)/g, '<br>').replace(/\s/g, "&nbsp")
                 .replace(/(请求地址:(&nbsp)*(.*?)(<br>)+\S*?json:(&nbsp)*(.*?)(<br>)+)/g, function (match, p1, p2, p3, p4, p5, p6) {
-                return '<a target="blank" href="/debug?uri='+encodeURIComponent(p3)+'&json='+encodeURIComponent(p6)+'">调试</a>&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp '+p1;
-        });
-        // 替换标签
-        var map = [];
-        content = content.replace(/(<.*?>)/g, function (match) {
-            map.push(match);
-            return tagPlaceholder;
-        });
+                    return '<a target="blank" href="/debug?uri=' + encodeURIComponent(p3) + '&json=' + encodeURIComponent(p6) + '">调试</a>&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp ' + p1;
+                });
+            // 替换标签
+            var map = [];
+            content = content.replace(/(<.*?>)/g, function (match) {
+                map.push(match);
+                return tagPlaceholder;
+            });
 
-        var i = -1;
-        content = content.replace(reg, '<i style="color:red;">'+search+'</i>').replace(new RegExp(tagPlaceholder, "g"), function () {
-            i++;
-            return map[i];
-        });
-        var arr = content.split("<br>");
-        for(var i=0,len=arr.length; i<len; i++) {
-            arr[i] = arr[i].replace(/(^(\d+)(-|:))/, '<i class="row">$2</i>&nbsp;&nbsp;&nbsp;');
+            var i = -1;
+            content = content.replace(reg, '<i style="color:red;">' + search + '</i>').replace(new RegExp(tagPlaceholder, "g"), function () {
+                i++;
+                return map[i];
+            });
+            var arr = content.split("<br>");
+            for (var i = 0, len = arr.length; i < len; i++) {
+                arr[i] = arr[i].replace(/(^(\d+)(-|:))/, '<i class="row">$2</i>&nbsp;&nbsp;&nbsp;');
+            }
+            content = arr.join("<br>");
+
+            return content;
         }
-        content = arr.join("<br>");
 
-        return content;
-    }
+        function getQueryVariable(variable) {
+            var query = window.location.search.substring(1);
+            var vars = query.split("&");
+            for (var i = 0; i < vars.length; i++) {
+                var pair = vars[i].split("=");
+                if (pair[0] == variable) { return pair[1]; }
+            }
+            return (false);
+        }
 
-    (function init() {
-        search = $("#search").text().trim();
+        (function init() {
+            search = $("#search").text().trim();
+            content = $("#content").html().trim();
 
-        content = $("#content").html().trim();
-        content = handleContent(content);
-        $("#content").html(content).show();
-    })();
+            var caseSensitive = getQueryVariable("case_sensitive");
+            content = handleContent(content, caseSensitive);
+            $("#content").html(content).show();
+        })();
 
-</script>
+    </script>
 </body>
+
 </html>
