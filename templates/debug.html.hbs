@@ -68,7 +68,7 @@
         function handleResponse(data) {
             try {
                 JSON.parse(data);
-                data = "<span class=\"json\">" + data + "</span>&nbsp;&nbsp;<a href=\"#\" class=\"format_json\">格式化</a>";
+                data = "<span class=\"json\">" + data + "</span>&nbsp;&nbsp;<a class=\"format_json\" style=\"color:blue;cursor:pointer\">格式化</a>";
             } catch (e) {
             }
             return data;
