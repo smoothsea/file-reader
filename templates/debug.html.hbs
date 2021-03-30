@@ -15,7 +15,12 @@
         .debug div>div {
             width: 110px;
         }
+
+        .info {
+            line-height: 25px;
+        }
     </style>
+    <link rel="stylesheet" href="public/jsonview.css">
 </head>
 
 <body>
@@ -24,12 +29,15 @@
             <div>URI:</div> <input type="text" name="uri" style="width: 550px;">
         </div>
         <div>
-            <div>POST json:</div> <textarea name="json" style="width: 550px;height:300px"></textarea>
+           <div>POST json:</div> <textarea name="json" style="width: 550px;height:200px"></textarea>
         </div>
         <div>
             <div>COOKIE:</div> <textarea name="cookie" style="width: 550px;height:100px"></textarea>
         </div>
         <div>
+            <div>并发数:</div> <input type="text" name="concurrency_count" value="1" style="width: 40px;">
+        </div>
+        <div style="margin-top: 23px;">
             <div>使用后端代理:</div>
             <div>
                 是<input type="radio" name="isAgent" value="1" checked>
@@ -53,13 +61,25 @@
         <div>
         </div>
     </div>
-    <script src="/public/zepto.js"></script>
+    <script src="/public/jquery.js"></script>
+    <script src="/public/jsonview.js"></script>
     <script>
+        var originalJsonMap = {};
+        function handleResponse(data) {
+            try {
+                JSON.parse(data);
+                data = "<span class=\"json\">" + data + "</span>&nbsp;&nbsp;<a href=\"#\" class=\"format_json\">格式化</a>";
+            } catch (e) {
+            }
+            return data;
+        }
+
         $("form").submit(function () {
             var uri = $("input[name='uri']").val();
             var json = $("textarea[name='json']").val();
             var isAgent = $("input[name='isAgent']:checked").val();
             var cookie = $("textarea[name='cookie']").val();
+            var concurrencyCount = Math.max($("input[name='concurrency_count']").val(), 1);
             var info = "";
             var submitButton = $("form button");
             submitButton.attr("disabled", "true");
@@ -78,45 +98,49 @@
                 url = uri;
             }
 
-            try {
-                $.ajax({
-                    url: url,
-                    data: data,
-                    type: "POST",
-                    contentType: "application/json",
-                    success: function (res, status, xhr) {
-                        if (isAgent == 1) {
-                           res = JSON.parse(res);
-                           if (res.status == 1) {
-                                var headers = JSON.parse(res.headers);
-                                info = "响应码: " + res.http_status + "<br/>" +
-                                       "响应结果: " + res.data + "<br/>" + 
-                                       "响应头: " + res.headers + "<br/>";
-                           } else {
-                                info = "错误信息: " + res.message;
-                           }
-                        } else {
-                            if (typeof res == "object") {
-                                res = JSON.stringify(res);
+            $(".info").html("");
+            for (var i = 0; i < concurrencyCount; i++) {
+                try {
+                    $.ajax({
+                        url: url,
+                        data: data,
+                        type: "POST",
+                        contentType: "application/json",
+                        success: function (res, status, xhr) {
+                            if (isAgent == 1) {
+                                res = JSON.parse(res);
+                                if (res.status == 1) {
+                                    var headers = JSON.parse(res.headers);
+                                    info = "Code: " + res.http_status + "<br/>" +
+                                        "Body: " + handleResponse(res.data) + "<br/>" +
+                                        "Headers: " + res.headers + "<br/>";
+                                } else {
+                                    info = "Error: " + res.message;
+                                }
+                            } else {
+                                if (typeof res == "object") {
+                                    res = JSON.stringify(res);
+                                }
+                                info = "Code: " + xhr.status + " " + xhr.statusText + "<br/>" +
+                                    "Body: " + handleResponse(res) + "<br/>" +
+                                    "Headers: " + xhr.getAllResponseHeaders() + "<br/>";
                             }
-                            info = "响应码: " + xhr.status + " " + xhr.statusText + "<br/>" +
-                                    "响应结果: " + res + "<br/>" + 
-                                    "响应头: " + xhr.getAllResponseHeaders() + "<br/>";
-                        }
-                    },
-                    error: function (xhr, err, exc) {
-                        info = "错误信息: " + err + "-----" + exc;
-                    },
-                    complete: function (res) {
-                        $(".info").html(info);
+                        },
+                        error: function (xhr, err, exc) {
+                            info = "Error: " + err + "-----" + exc;
+                        },
+                        complete: function (res) {
+                            $(".info").append(info + "<hr/><br/>");
 
-                        submitButton.removeAttr("disabled");
-                    },
-                });
-            } catch (e) {
-                $(".info").html(e.toString());
-                submitButton.removeAttr("disabled");
+                            submitButton.removeAttr("disabled");
+                        },
+                    });
+                } catch (e) {
+                    $(".info").append(e.toString() + "<hr/><br/>");
+                    submitButton.removeAttr("disabled");
+                }
             }
+
 
             return false;
         });
@@ -131,6 +155,21 @@
                 textEle.removeAttr("placeholder");
                 textEle.removeAttr("readonly");
             }
+        });
+
+        $("body").on("click", ".format_json", function () {
+            var prev = $(this).prev();
+            var val = prev.text();
+            prev.JSONView(val);
+            $(this).removeClass("format_json").addClass("restore").text("还原");
+
+            originalJsonMap[$(this).index()] = val;
+        });
+
+        $("body").on("click", ".restore", function () {
+            var prev = $(this).prev();
+            prev.text(originalJsonMap[$(this).index()]);
+            $(this).removeClass("restore").addClass("format_json").text("格式化");
         });
 
         (function () {
