@@ -37,6 +37,7 @@
         var content = '';
         var seek = {{ seek }};
         var path = '{{ file_path }}';
+        var defaultPageSize = 0;
 
         function handleContent(content) {
             var content = content.replace(/(\r\n|\r|\n)/g, '<br/>').replace(/\s/g, '&nbsp')
@@ -54,9 +55,15 @@
             }
             return false;
         }
+        
+        function flushShow() {
+            $("#content").html(content).show();
+            $(".load").hide();
+        }
 
         (function init() {
             content = $("#content").html();
+            defaultPageSize = content.length;
             if (is_code()) {
                 content = '<pre><code>' + content + '</code></pre>';
             } else {
@@ -67,16 +74,22 @@
                         dataType: "json",
                         success: function (data) {
                             if (data.content) {
-                                $("#content").append(handleContent(data.content));
+                                var newContent = handleContent(data.content);
+                                content = content + newContent;
+                                if (content.length > defaultPageSize * 2) {
+                                    content = content.substr(content.length - defaultPageSize)
+                                    flushShow();
+                                } else {
+                                    $("#content").append(newContent);
+                                }
                                 seek = data.seek;
                             }
                         }
                     });;
                 }, 5000);
             }
-
-            $("#content").html(content).show();
-            $(".load").hide();
+            
+            flushShow();
             if (is_code()) {
                 hljs.initHighlightingOnLoad();
             }
