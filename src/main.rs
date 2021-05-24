@@ -474,6 +474,9 @@ struct DebugAgent {
     uri: String,
     json: String,
     cookie: String,  
+    method: i8,
+    urlencoded: String,
+    enctype: String,
 }
 
 #[post("/debug_agent", data = "<params>")]
@@ -481,12 +484,30 @@ fn debug_agent(params: Json<DebugAgent>) -> String {
     let client = Client::new();
     let mut content = HashMap::new();
     let mut headers = HeaderMap::new();
-    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    let mut data = params.json.clone();
+    let content_type = match &params.enctype[..] {
+        "json" => {
+            "application/json"
+        },
+        "urlencoded" => {
+            data = params.urlencoded.clone();
+            "application/x-www-form-urlencoded"
+        },
+        _ => "application/json",
+    };
+
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static(content_type));
     headers.insert(COOKIE, HeaderValue::from_static(string_to_static_str(params.cookie.clone())));
 
-    match client.post(&(params.uri))
+    let request_build = match params.method {
+        1 => client.post(&(params.uri)),
+        2 => client.get(&(params.uri)),
+        _ => client.post(&(params.uri))
+    };
+
+    match request_build
         .headers(headers)
-        .body(params.json.clone())
+        .body(data)
         .send() {
         Ok(mut res) => {
             let mut body:String = "".to_string();

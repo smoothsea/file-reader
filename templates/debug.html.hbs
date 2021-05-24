@@ -13,7 +13,7 @@
         }
 
         .debug div>div {
-            width: 110px;
+            width: 140px;
         }
 
         .info {
@@ -29,23 +29,35 @@
             <div>URI:</div> <input type="text" name="uri" style="width: 550px;">
         </div>
         <div>
-           <div>POST json:</div> <textarea name="json" style="width: 550px;height:200px"></textarea>
+            <div>POST json:</div> <textarea name="json" style="width: 550px;height:100px"></textarea>
         </div>
         <div>
-            <div>COOKIE:</div> <textarea name="cookie" style="width: 550px;height:100px"></textarea>
+            <div>POST urlencoded:</div> <textarea name="urlencoded" style="width: 550px;height:100px"></textarea>
+        </div>
+
+        <div>
+            <div>COOKIE:</div> <textarea name="cookie" style="width: 550px;height:50px"></textarea>
         </div>
         <div>
             <div>并发数:</div> <input type="text" name="concurrency_count" value="1" style="width: 40px;">
         </div>
         <div style="margin-top: 23px;">
-            <div>使用后端代理:</div>
-            <div>
-                是<input type="radio" name="isAgent" value="1" checked>
-                否<input type="radio" name="isAgent" value="0">
-            </div>
+            <div>Method:</div>
+            <select name="method">
+                <option value="1">POST</option>
+                <option value="2">GET</option>
+            </select>
         </div>
-        <br>
-        <br>
+        <div style="margin-top: 23px;">
+            <div>POST enctype:</div>
+            json<input type="radio" name="enctype" value="json" checked>&nbsp;&nbsp;
+            x-www-form-urlencoded<input type="radio" name="enctype" value="urlencoded">
+        </div>
+        <div style="margin-top: 23px;">
+            <div>使用后端代理:</div>
+            是<input type="radio" name="isAgent" value="1" checked>&nbsp;&nbsp;
+            否<input type="radio" name="isAgent" value="0">
+        </div>
         <br>
         <div>
             <div></div>
@@ -77,24 +89,42 @@
         $("form").submit(function () {
             var uri = $("input[name='uri']").val();
             var json = $("textarea[name='json']").val();
+            var urlencoded = $("textarea[name='urlencoded']").val();
             var isAgent = $("input[name='isAgent']:checked").val();
             var cookie = $("textarea[name='cookie']").val();
             var concurrencyCount = Math.max($("input[name='concurrency_count']").val(), 1);
+            var method = $("select[name='method']").val();
+            var enctype = $("input[name='enctype']:checked").val();
             var info = "";
             var submitButton = $("form button");
             submitButton.attr("disabled", "true");
 
-            var data, url;
+            var url, data;
+            var ajaxType = "POST";
+            var ajaxContentType = "application/json";
             if (isAgent == 1) {
                 data = JSON.stringify({
                     json: json,
                     uri: uri,
                     cookie: cookie,
+                    method: Number(method),
+                    enctype: enctype,
+                    urlencoded: urlencoded,
                 });
 
                 url = "/debug_agent";
             } else {
-                data = json;
+                if (method == 1) {
+                    if (enctype == "json") {
+                        data = json;
+                    } else {
+                        data = urlencoded;
+                        ajaxContentType = "application/x-www-form-urlencoded";
+                    }
+                } else {
+                    ajaxType = "GET";
+                }
+
                 url = uri;
             }
 
@@ -104,8 +134,8 @@
                     $.ajax({
                         url: url,
                         data: data,
-                        type: "POST",
-                        contentType: "application/json",
+                        type: ajaxType,
+                        contentType: ajaxContentType,
                         success: function (res, status, xhr) {
                             if (isAgent == 1) {
                                 res = JSON.parse(res);
@@ -132,6 +162,7 @@
                         complete: function (res) {
                             $(".info").append(info + "<hr/><br/>");
 
+                            $(".format_json").click();
                             submitButton.removeAttr("disabled");
                         },
                     });
