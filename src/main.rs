@@ -187,6 +187,7 @@ fn directory_filter(dir: String) -> String {
     }
 }
 
+// Gets a list of subfiles and directories in a directory
 fn get_directory_info_render(dir: &str) -> Result<IndexRender, Box<dyn Error>> {
     let dir = &get_complete_directory(dir);
     let path = Path::new(dir);
@@ -233,26 +234,27 @@ fn get_directory_info_render(dir: &str) -> Result<IndexRender, Box<dyn Error>> {
     Ok(render)
 }
 
+// Gets the content of a file 
 fn get_detail_render(file_path: &str, start_seek: u64) -> Result<DetailRender, Box<dyn Error>> {
     let file_path = &get_complete_directory(file_path);
     let path = Path::new(file_path);
     let mut file = File::open(path)?;
     let metadata = file.metadata()?;
     let file_len = metadata.len();
-    let max_file_len = 5181440;
+    let max_file_len = 512000;         // the max returned size, default is 512kb.
     let mut contents = String::new();
     let seek = file_len;
+    
     if file_len > max_file_len || start_seek > 0 {
-        let len_if_exceed = 512000; //500kb
         let read_start_seek: u64;
         if start_seek > 0 {
             read_start_seek = start_seek;
         } else {
-            read_start_seek = file_len - len_if_exceed;
+            read_start_seek = file_len - max_file_len;
         }
-        if let (a, _b) = attemp_to_read_file(&mut file, read_start_seek, 3)? {
-            contents = a;
-        }
+
+        let (c, _) = attemp_to_read_file(&mut file, read_start_seek, 3)?;
+        contents = c;
     } else {
         file.read_to_string(&mut contents)?;
     }
@@ -261,6 +263,7 @@ fn get_detail_render(file_path: &str, start_seek: u64) -> Result<DetailRender, B
     Ok(render)
 }
 
+// Read file with some trys
 fn attemp_to_read_file(
     file: &mut File,
     seek: u64,
@@ -275,6 +278,7 @@ fn attemp_to_read_file(
         }
         Err(e) => {
             if times > 0 {
+                // That returned content that intercepted by Seek maybe is incomplete(multibyte encoding),so sets some offset 
                 return attemp_to_read_file(file, seek + 1, times - 1);
             } else {
                 return Err(Box::new(e));
@@ -283,6 +287,7 @@ fn attemp_to_read_file(
     }
 }
 
+// Gets the filtered content of a file
 fn get_search_render(
     file_path: &str,
     search: &str,
@@ -292,8 +297,8 @@ fn get_search_render(
 ) -> Result<SearchRender, Box<dyn Error>> {
     let file_path = &get_complete_directory(file_path);
     let path = Path::new(file_path);
-    let single_page_limit = 10485760;
-    let mut size_limit = 0;
+    let single_page_limit = 10485760;   // The max size of filtered result per page
+    let mut size_limit = 0; // The max read size of all pages
     let mut content = "".to_string();
     if path.is_dir() {
         for entry in fs::read_dir(path)? {
