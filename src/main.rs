@@ -5,32 +5,43 @@ extern crate rocket;
 #[macro_use]
 extern crate serde_derive;
 
-use chrono::offset::Utc;
-use chrono::DateTime;
-use clap::{App, Arg};
-use grep::printer::Standard;
-use grep::regex::RegexMatcherBuilder;
-use grep::searcher::SearcherBuilder;
-use rocket::http::Status;
-use rocket::http::{Cookie, Cookies};
-use rocket::request::{self, Form, FromRequest, Request};
-use rocket::response::Redirect;
-use rocket::Outcome;
-use rocket::State;
-use rocket_contrib::templates::Template;
-use rocket_contrib::serve::StaticFiles;
-use rocket_contrib::json::Json;
-use std::collections::HashMap;
-use std::error::Error;
-use std::fs::{self, File};
-use std::io::prelude::*;
-use std::io::SeekFrom;
-use std::path::{Path, PathBuf};
 use std::str;
+use rocket::State;
+use rocket::Outcome;
 use reqwest::Client;
+use clap::{App, Arg};
+use chrono::DateTime;
+use std::io::SeekFrom;
+use std::error::Error;
+use chrono::prelude::*;
+use chrono::offset::Utc;
+use std::io::prelude::*;
+use std::fs::{self, File};
+use grep::printer::Standard;
+use std::collections::HashMap;
+use rocket::response::Redirect;
+use std::path::{Path, PathBuf};
+use rocket_contrib::json::Json;
+use grep::searcher::SearcherBuilder;
+use grep::regex::RegexMatcherBuilder;
+use rocket_contrib::serve::StaticFiles;
+use rocket_contrib::templates::Template;
+use rocket::http::{Status, Cookie, Cookies};
+use rocket::request::{self, Form, FromRequest, Request};
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE, COOKIE};
 
 static mut GLOBAL_ARGS: Option<Args> = None;
+
+macro_rules! log {
+    ($($x: expr), +) => {
+        let mut str = Local::now().to_rfc2822();
+        str.push_str(": ");
+        $(
+            str = format!("{} {};", str, $x);
+        )*
+        println!("{}", str);
+    };
+}
 
 #[derive(FromForm, Debug)]
 struct Login {
@@ -43,6 +54,7 @@ struct Args {
     file_dir: String,
     username: Option<String>,
     password: Option<String>,
+    log: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -90,11 +102,12 @@ impl IndexRender {
 }
 
 impl Args {
-    fn new(file_dir: String, username: Option<String>, password: Option<String>) -> Args {
+    fn new(file_dir: String, username: Option<String>, password: Option<String>, log: bool) -> Args {
         Args {
             file_dir,
             username,
             password,
+            log,
         }
     }
 }
@@ -371,6 +384,9 @@ fn auth(args: State<Args>, mut cookies: Cookies) -> Redirect {
 fn index(args: State<Args>, _auth: Authorization) -> Template {
     match get_directory_info_render(&args.file_dir) {
         Ok(render) => {
+            if args.log {
+                log!("Access index");
+            }
             return Template::render("index", render);
         }
         Err(e) => {
@@ -386,7 +402,10 @@ fn login() -> Template {
 }
 
 #[get("/debug")]
-fn debug() -> Template {
+fn debug(args: State<Args>) -> Template {
+    if args.log {
+        log!("Access debug");
+    }
     Template::render("debug", ErrorRender::new("".to_owned()))
 }
 
@@ -425,7 +444,7 @@ fn more(seek: u64, path: String, _auth: Authorization) -> String {
 
 #[get("/search?<search>&<path>&<before>&<after>&<case_sensitive>", rank = 3)]
 fn search(
-    _args: State<Args>,
+    args: State<Args>,
     search: String,
     path: String,
     before: String,
@@ -433,6 +452,9 @@ fn search(
     case_sensitive: bool,
     _auth: Authorization,
 ) -> Template {
+    if args.log {
+        log!(format!("Access search, path: {}, search: {}", path, search));
+    }
     let case_insensitive = match case_sensitive {
         true => false,
         false => true
@@ -450,6 +472,9 @@ fn search(
 
 #[get("/<name..>", rank = 100)]
 fn detail(args: State<Args>, name: PathBuf, _auth: Authorization) -> Template {
+    if args.log {
+        log!(format!("Access detail, path:{}", name.to_string_lossy()));
+    }
     let path = &args.file_dir;
     let full_file_name = format!("{}{}", path, name.to_string_lossy().into_owned());
     let full_path = Path::new(&full_file_name);
@@ -485,7 +510,10 @@ struct DebugAgent {
 }
 
 #[post("/debug_agent", data = "<params>")]
-fn debug_agent(params: Json<DebugAgent>) -> String {
+fn debug_agent(args: State<Args>, params: Json<DebugAgent>) -> String {
+    if args.log {
+        log!("Debug by agent");
+    }
     let client = Client::new();
     let mut content = HashMap::new();
     let mut headers = HeaderMap::new();
@@ -581,6 +609,12 @@ fn parse_arguments() -> Args {
                 .requires("username")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("log")
+            .short("l")
+            .help("输出日志")
+            .takes_value(false),
+        )
         .get_matches();
 
     let mut dir = matches.value_of("directory").unwrap().to_owned();
@@ -592,9 +626,12 @@ fn parse_arguments() -> Args {
         true => Some(matches.value_of("username").unwrap().to_owned()),
         false => None,
     };
+
     let password = match matches.is_present("password") {
         true => Some(matches.value_of("password").unwrap().to_owned()),
         false => None,
     };
-    Args::new(dir, username, password)
+
+    let log = matches.is_present("log");
+    Args::new(dir, username, password, log)
 }
