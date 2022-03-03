@@ -16,7 +16,6 @@ use std::error::Error;
 use chrono::prelude::*;
 use chrono::offset::Utc;
 use std::io::prelude::*;
-use std::fs::{self, File};
 use grep::printer::Standard;
 use std::collections::HashMap;
 use rocket::response::Redirect;
@@ -24,6 +23,7 @@ use std::path::{Path, PathBuf};
 use rocket_contrib::json::Json;
 use grep::searcher::SearcherBuilder;
 use grep::regex::RegexMatcherBuilder;
+use std::fs::{self, File, OpenOptions};
 use rocket_contrib::serve::StaticFiles;
 use rocket_contrib::templates::Template;
 use rocket::http::{Status, Cookie, Cookies};
@@ -55,6 +55,7 @@ struct Args {
     username: Option<String>,
     password: Option<String>,
     log: bool,
+    write: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -102,12 +103,13 @@ impl IndexRender {
 }
 
 impl Args {
-    fn new(file_dir: String, username: Option<String>, password: Option<String>, log: bool) -> Args {
+    fn new(file_dir: String, username: Option<String>, password: Option<String>, log: bool, write: bool) -> Args {
         Args {
             file_dir,
             username,
             password,
             log,
+            write,
         }
     }
 }
@@ -117,6 +119,7 @@ struct DetailRender {
     content: String,
     seek: u64,
     file_path: String,
+    write: bool,
 }
 
 impl DetailRender {
@@ -125,7 +128,12 @@ impl DetailRender {
             content,
             seek,
             file_path,
+            write: false,
         }
+    }
+
+    fn set_write(&mut self, write: bool) {
+        self.write = write;
     }
 }
 
@@ -488,9 +496,10 @@ fn detail(args: State<Args>, name: PathBuf, _auth: Authorization) -> Template {
         };
     } else {
         match get_detail_render(&full_file_name, 0) {
-            Ok(render) => {
+            Ok(mut render) => {
+                render.set_write(args.write);
                 return Template::render("detail", render);
-            }
+            },
             Err(e) => {
                 let render = ErrorRender::new(e.to_string());
                 return Template::render("error", render);
@@ -561,8 +570,44 @@ fn debug_agent(args: State<Args>, params: Json<DebugAgent>) -> String {
     serde_json::to_string(&content).unwrap_or("{\"status\":\"0\"}".to_owned())
 }
 
+#[derive(Deserialize, Debug)]
+struct AppendParams{
+    path: String,
+    content: String,
+}
+
+#[post("/append", data = "<params>")]
+fn append(args: State<Args>, params: Json<AppendParams>) -> String {
+    if args.log {
+        log!("Append to file");
+    }
+
+    if !args.write {
+        return return_result(0, "不支持写入");
+    }
+
+    let full_file_name = format!("{}{}", args.file_dir, params.path);
+    println!("{}", full_file_name);
+    if let Ok(mut file) = OpenOptions::new()
+        .write(true)
+        .append(true)
+        .open(&full_file_name) {
+        if let Err(_e) = file.write_all(format!("\r\n{}", &params.content).as_bytes()) {
+            return return_result(0, "文件写入错误");
+        }
+    } else {
+        return return_result(0, "文件打开错误");
+    }
+        
+    return_result(1, "")
+}
+
 fn string_to_static_str(s: String) -> &'static str {
     Box::leak(s.into_boxed_str())
+}
+
+fn return_result(status: u8, msg: &str) -> String {
+    return format!("{{\"status\":{}, \"message\":\"{}\"}}", status, msg);
 }
 
 fn main() {
@@ -574,7 +619,7 @@ fn main() {
         .manage(args)
         .mount(
             "/",
-            routes![auth, index, detail, more, search, login, do_login, debug, debug_agent],
+            routes![auth, index, detail, more, search, login, do_login, debug, debug_agent, append],
         )
         .mount("/public", StaticFiles::from("./templates/static"))
         .attach(Template::fairing());
@@ -615,6 +660,12 @@ fn parse_arguments() -> Args {
             .help("输出日志")
             .takes_value(false),
         )
+        .arg(
+            Arg::with_name("write")
+            .short("w")
+            .help("写入文件")
+            .takes_value(false),
+        )
         .get_matches();
 
     let mut dir = matches.value_of("directory").unwrap().to_owned();
@@ -633,5 +684,6 @@ fn parse_arguments() -> Args {
     };
 
     let log = matches.is_present("log");
-    Args::new(dir, username, password, log)
+    let write = matches.is_present("write");
+    Args::new(dir, username, password, log, write)
 }

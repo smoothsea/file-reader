@@ -9,6 +9,57 @@
         i {
             font-style: normal;
         }
+
+        .modal-window {
+          position: fixed;
+          background-color: rgba(255, 255, 255, 0.25);
+          top: 0;
+          right: 0;
+          bottom: 0;
+          left: 0;
+          z-index: 999;
+          visibility: visible;
+          opacity: 1;
+          pointer-events: auto;
+          transition: all 0.3;
+          display: none;
+        }
+
+        .modal-window > div {
+          background-color: #EEEEEE;
+          width: 80%;
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          -webkit-transform: translate(-50%, -50%);
+                  transform: translate(-50%, -50%);
+          padding: 2em;
+        }
+
+        .modal-window header {
+          font-weight: bold;
+        }
+
+        .modal-close {
+          color: #aaa;
+          line-height: 50px;
+          font-size: 80%;
+          position: absolute;
+          right: 0;
+          text-align: center;
+          top: 0;
+          width: 70px;
+          text-decoration: none;
+        }
+
+        .modal-close:hover {
+          color: black;
+        }
+
+        .append-content {
+          background-color: #F8E0E6;           
+          display: block;
+        }
     </style>
     <link rel="stylesheet" href="/public/default.min.css">
 </head>
@@ -31,12 +82,28 @@
     <span class="load">加载中...</span>
     <div id="content" style="display: none;">{{ content }}</div>
 
+    <div id="write-icon" style="position: fixed;bottom: 10px;right: 30px; z-index: 100;
+    cursor:pointer; display: none">
+        <span style="height:100px; line-height:100px; display:block; color:#FFF; text-align:center;">
+          <img src="/public/plus.png" style="width:25px;height:25px"></img>
+        </span>
+    </div>
+
+    <div id="open-modal" class="modal-window">
+      <div>
+        <a href="javascript:void(0)" title="Close" class="modal-close">Close</a>
+        <div><textarea style="width: 95%; height: 500px" 
+        onkeydown="writeEvent(event)"></textarea></div>
+        </div>
+    </div>
+
     <script src="/public/highlight.min.js"></script>
     <script src="/public/zepto.js"></script>
     <script>
         var content = '';
         var seek = {{ seek }};
         var path = '{{ file_path }}';
+        var write = {{ write }};
         var defaultPageSize = 0;
 
         function handleContent(content) {
@@ -61,37 +128,106 @@
             $(".load").hide();
         }
 
+        function appendToFile() {
+            var data = {
+                path: path,
+                content: $("#open-modal textarea").val(),
+              };
+            $.ajax({
+                url: "/append",
+                type: "POST",
+                dataType: "json",
+                contentType: "application/x-www-form-urlencoded",
+                data: JSON.stringify(data),
+                success: function (ret) {
+                  if (ret.status == 1) {
+                    query(function () {
+                      closeWrite();
+                      window.scrollTo(0,document.documentElement.clientHeight);
+                    });
+                  } else {
+                    alert(ret.message);
+                  }
+                }
+            });
+        }
+
+        var lastKeynum,clearT;
+        function writeEvent(e) {
+            var keynum = window.event ? e.keyCode : e.which;
+            if (keynum == 13) {
+              if (lastKeynum == 17) {
+                  // tab + enter
+                  var textEle = $("#open-modal textarea");
+                  textEle.val(textEle.val() + "\r\n");
+              } else {
+                appendToFile();
+              }
+            }
+            lastKeynum = keynum;
+
+            if (clearT) {
+              clearTimeout(clearT);
+            }
+            clearT = setTimeout(function() {lastKeynum = undefined;}, 500);
+        }
+
+        function query(successCb) {
+          $.ajax({
+              url: "/more?seek=" + seek + "&path=" + path,
+              dataType: "json",
+              success: function (data) {
+                  if (data.content) {
+                      var newContent = handleContent(data.content);
+                      var contentId = "append" + (new Date()).getTime();
+                      content = content + newContent;
+                      if (content.length > defaultPageSize * 2) {
+                          content = content.substr(content.length - defaultPageSize)
+                          flushShow();
+                      } else {
+                          $("#content").append('<span class="append-content" id="' + contentId +
+                          '">' + newContent + '</span>');
+                      }
+                      seek = data.seek;
+                      setTimeout(function () {
+                        $("#" + contentId).removeClass("append-content");
+                      }, 5000);
+                      successCb();
+                  }
+              }
+          });
+        }
+
+        function closeWrite() {
+          $("#open-modal textarea").val("");
+          $("#open-modal").hide();
+        }
+
         (function init() {
             content = $("#content").html();
-            defaultPageSize = content.length;
+            defaultPageSize = Math.max(content.length, 512000);
             if (is_code()) {
                 content = '<pre><code>' + content + '</code></pre>';
             } else {
                 content = handleContent(content);
-                setInterval(function () {
-                    $.ajax({
-                        url: "/more?seek=" + seek + "&path=" + path,
-                        dataType: "json",
-                        success: function (data) {
-                            if (data.content) {
-                                var newContent = handleContent(data.content);
-                                content = content + newContent;
-                                if (content.length > defaultPageSize * 2) {
-                                    content = content.substr(content.length - defaultPageSize)
-                                    flushShow();
-                                } else {
-                                    $("#content").append(newContent);
-                                }
-                                seek = data.seek;
-                            }
-                        }
-                    });;
-                }, 5000);
+                setInterval(query, 5000);
             }
             
             flushShow();
             if (is_code()) {
                 hljs.initHighlightingOnLoad();
+            }
+
+            if (write) {
+                $("#write-icon").show();
+
+                $("#write-icon").click(function () {
+                  $("#open-modal").show();
+                });
+
+                $(".modal-close").click(function () {
+                  closeWrite();
+                });
             }
         })();
 
