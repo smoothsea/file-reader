@@ -86,10 +86,11 @@
                 });
 
                 var html = "";
+                var url = location.href.replace(/file-reader-index$/, "").replace(/\/$/, "") + "/";
                 for (i = 0, len = tArray.length; i < len; i++) {
                     var t = byteToText(tArray[i]["size"]);
                     html += "<tr>"
-                        + "<td>" + "[" + tArray[i]["class"] + '] <a href="./' + tArray[i]["name"] + '/">' + tArray[i]["name"] + "</a></td>"
+                        + "<td>" + "[" + tArray[i]["class"] + '] <a href="' + url + tArray[i]["name"] + '">' + tArray[i]["name"] + "</a></td>"
                         + "<td>" + t + "</td>"
                         + "<td>" + tArray[i]["date"] + "</td>"
                         + "</tr>";

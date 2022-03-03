@@ -102,7 +102,7 @@
             success: function (res) {
                 res = JSON.parse(res);
                 if (res.status == 1) {
-                    window.location.href = "/index";
+                    window.location.href = "/file-reader-index";
                 } else {
                     alert(res.msg ? res.msg : "登录错误");
                 }

@@ -21,6 +21,7 @@ use std::collections::HashMap;
 use rocket::response::Redirect;
 use std::path::{Path, PathBuf};
 use rocket_contrib::json::Json;
+use rocket::response::NamedFile;
 use grep::searcher::SearcherBuilder;
 use grep::regex::RegexMatcherBuilder;
 use std::fs::{self, File, OpenOptions};
@@ -382,13 +383,13 @@ fn is_auth(cookies: &mut Cookies, config: &Args) -> bool {
 #[get("/")]
 fn auth(args: State<Args>, mut cookies: Cookies) -> Redirect {
     if is_auth(&mut cookies, &*args) {
-        Redirect::to("/index")
+        Redirect::to("/file-reader-index")
     } else {
         Redirect::to("/login")
     }
 }
 
-#[get("/index")]
+#[get("/file-reader-index")]
 fn index(args: State<Args>, _auth: Authorization) -> Template {
     match get_directory_info_render(&args.file_dir) {
         Ok(render) => {
@@ -478,31 +479,35 @@ fn search(
     };
 }
 
+#[derive(Debug, Responder)]
+enum DetailResponse {
+    Template(Template),
+    NamedFile(Option<NamedFile>),
+}
+
 #[get("/<name..>", rank = 100)]
-fn detail(args: State<Args>, name: PathBuf, _auth: Authorization) -> Template {
+fn detail(args: State<Args>, name: PathBuf, _auth: Authorization) -> DetailResponse {
     if args.log {
         log!(format!("Access detail, path:{}", name.to_string_lossy()));
     }
-    let path = &args.file_dir;
-    let full_file_name = format!("{}{}", path, name.to_string_lossy().into_owned());
-    let full_path = Path::new(&full_file_name);
-    if full_path.is_dir() {
-        match get_directory_info_render(&full_file_name) {
-            Ok(render) => return Template::render("index", render),
+    let path = Path::new(&args.file_dir).join(name);
+    if path.is_dir() {
+        match get_directory_info_render(&path.to_string_lossy()) {
+            Ok(render) => return DetailResponse::Template(Template::render("index", render)),
             Err(e) => {
                 let render = ErrorRender::new(e.to_string());
-                return Template::render("error", render);
+                return DetailResponse::Template(Template::render("error", render));
             }
         };
     } else {
-        match get_detail_render(&full_file_name, 0) {
+        match get_detail_render(&path.to_string_lossy(), 0) {
             Ok(mut render) => {
                 render.set_write(args.write);
-                return Template::render("detail", render);
+                return DetailResponse::Template(Template::render("detail", render));
             },
-            Err(e) => {
-                let render = ErrorRender::new(e.to_string());
-                return Template::render("error", render);
+            Err(_) => {
+                // Download directly
+                return DetailResponse::NamedFile(NamedFile::open(&path).ok());
             }
         }
     }
@@ -586,8 +591,7 @@ fn append(args: State<Args>, params: Json<AppendParams>) -> String {
         return return_result(0, "不支持写入");
     }
 
-    let full_file_name = format!("{}{}", args.file_dir, params.path);
-    println!("{}", full_file_name);
+    let full_file_name = Path::new(&args.file_dir).join(&params.path);
     if let Ok(mut file) = OpenOptions::new()
         .write(true)
         .append(true)

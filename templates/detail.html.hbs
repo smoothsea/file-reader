@@ -229,6 +229,14 @@
                   closeWrite();
                 });
             }
+
+            document.getElementsByTagName("body")[0].addEventListener("keydown", function (e) {
+              var keynum = window.event ? e.keyCode : e.which;
+              // Esc
+              if (keynum == 27) {
+                  closeWrite();
+                }
+            });
         })();
 
 
