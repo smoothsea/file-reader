@@ -32,6 +32,7 @@
     <div id="data" style="display: none;">
         {{ list }}
     </div>
+    <script src="/public/zepto.js"></script>
     <script>
         (function (w, d) {
             var list;
@@ -39,6 +40,8 @@
                 field: "name",
                 order: "asc",
             };
+            var url = location.href.replace(/file-reader-index$/, "").replace(/\/$/, "") + "/";
+            var path = location.pathname.replace(/file-reader-index$/, "").replace(/\/$/, "") + "/";
 
             var tbody = document.getElementById("tbody");
             var data = document.getElementById("data");
@@ -86,7 +89,6 @@
                 });
 
                 var html = "";
-                var url = location.href.replace(/file-reader-index$/, "").replace(/\/$/, "") + "/";
                 for (i = 0, len = tArray.length; i < len; i++) {
                     var t = byteToText(tArray[i]["size"]);
                     html += "<tr>"
@@ -115,6 +117,42 @@
                 }
                 return bytes + symbols[i];
             }
+
+            // 拖拽上传
+            document.addEventListener("drop",preventDe);
+            document.addEventListener("dragleave",preventDe);
+            document.addEventListener("dragover",preventDe);
+            document.addEventListener("dragenter",preventDe);
+
+            function preventDe(e){
+              e.preventDefault();
+            }
+
+            // TODO 重复先提示
+            document.addEventListener("drop",function(e){
+              e.preventDefault();
+              var formData = new FormData();
+              var file = e.dataTransfer.files[0];
+              formData.append("file", file);
+
+              $.ajax({
+                type: 'post',
+                url: '/upload?path=' + path + '&file_name=' + file.name,
+                processData: false,
+                contentType: false,
+                data:formData,
+                dataType:'json',
+                success:function(ret){
+                  if (ret.status == 1) {
+                    window.location.reload();
+                  } else {
+                    alert(ret.message);
+                  }
+                },
+                error:function(xhr, type){
+                }
+              });
+            })
         })(window, document)
     </script>
 </body>

@@ -5,9 +5,17 @@ extern crate rocket;
 #[macro_use]
 extern crate serde_derive;
 
-use std::str;
+use rocket::Data;
 use rocket::State;
 use rocket::Outcome;
+use rocket_contrib::json::Json;
+use rocket::response::NamedFile;
+use rocket_contrib::serve::StaticFiles;
+use rocket_contrib::templates::Template;
+use rocket::request::{self, Form, FromRequest, Request};
+use rocket::http::{Status, Cookie, Cookies, ContentType};
+
+use std::str;
 use reqwest::Client;
 use clap::{App, Arg};
 use chrono::DateTime;
@@ -20,16 +28,13 @@ use grep::printer::Standard;
 use std::collections::HashMap;
 use rocket::response::Redirect;
 use std::path::{Path, PathBuf};
-use rocket_contrib::json::Json;
-use rocket::response::NamedFile;
 use grep::searcher::SearcherBuilder;
 use grep::regex::RegexMatcherBuilder;
 use std::fs::{self, File, OpenOptions};
-use rocket_contrib::serve::StaticFiles;
-use rocket_contrib::templates::Template;
-use rocket::http::{Status, Cookie, Cookies};
-use rocket::request::{self, Form, FromRequest, Request};
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE, COOKIE};
+
+use multipart::server::Multipart;
+use multipart::server::save::SaveResult::*;
 
 static mut GLOBAL_ARGS: Option<Args> = None;
 
@@ -52,7 +57,7 @@ struct Login {
 
 #[derive(Debug, Clone)]
 struct Args {
-    file_dir: String,
+    file_dir: PathBuf,
     username: Option<String>,
     password: Option<String>,
     log: bool,
@@ -104,7 +109,7 @@ impl IndexRender {
 }
 
 impl Args {
-    fn new(file_dir: String, username: Option<String>, password: Option<String>, log: bool, write: bool) -> Args {
+    fn new(file_dir: PathBuf, username: Option<String>, password: Option<String>, log: bool, write: bool) -> Args {
         Args {
             file_dir,
             username,
@@ -191,28 +196,15 @@ impl<'a, 'r> FromRequest<'a, 'r> for Authorization {
     }
 }
 
-fn get_complete_directory(dir: &str) -> String {
-    unsafe {
-        let base_dir = GLOBAL_ARGS.clone().unwrap().file_dir;
-        if dir.contains(&base_dir) {
-            dir.to_owned()
-        } else {
-            format!("{}{}", base_dir, dir)
-        }
-    }
-}
-
 fn directory_filter(dir: String) -> String {
     unsafe {
         let base_dir = GLOBAL_ARGS.clone().unwrap().file_dir;
-        dir.replace(&base_dir, "")
+        dir.replace(base_dir.to_str().unwrap_or(""), "")
     }
 }
 
 // Gets a list of subfiles and directories in a directory
-fn get_directory_info_render(dir: &str) -> Result<IndexRender, Box<dyn Error>> {
-    let dir = &get_complete_directory(dir);
-    let path = Path::new(dir);
+fn get_directory_info_render(path: &PathBuf) -> Result<IndexRender, Box<dyn Error>> {
     let render;
     if path.is_dir() {
         let mut elements: Vec<IndexElement> = vec![];
@@ -225,7 +217,7 @@ fn get_directory_info_render(dir: &str) -> Result<IndexRender, Box<dyn Error>> {
                 .file_name()
                 .unwrap()
                 .to_string_lossy()
-                .into_owned();
+                .to_string();
 
             if file_name.get(0..1) == Some(".") {
                 continue;
@@ -235,19 +227,17 @@ fn get_directory_info_render(dir: &str) -> Result<IndexRender, Box<dyn Error>> {
             let atime: DateTime<Utc> = metadata.modified()?.into();
             let atime_string = atime.format("%Y-%m-%d %T").to_string();
 
-            let class;
-            if file_path.is_dir() {
-                class = "d".to_string();
-            } else {
-                class = "f".to_string();
-            }
+            let class = match file_path.is_dir() {
+                true => "d".to_string(),
+                false => "f".to_string(),
+            };
             elements.push(IndexElement::new(class, file_name, atime_string, len));
         }
         render = IndexRender::new(
             true,
             "".to_string(),
             elements,
-            Some(directory_filter(path.to_str().unwrap_or("").to_string())),
+            Some(directory_filter(path.to_string_lossy().to_string())),
         );
     } else {
         render = IndexRender::new(false, "目录配置错误".to_string(), vec![], None);
@@ -257,9 +247,7 @@ fn get_directory_info_render(dir: &str) -> Result<IndexRender, Box<dyn Error>> {
 }
 
 // Gets the content of a file 
-fn get_detail_render(file_path: &str, start_seek: u64) -> Result<DetailRender, Box<dyn Error>> {
-    let file_path = &get_complete_directory(file_path);
-    let path = Path::new(file_path);
+fn get_detail_render(path: &PathBuf, start_seek: u64) -> Result<DetailRender, Box<dyn Error>> {
     let mut file = File::open(path)?;
     let metadata = file.metadata()?;
     let file_len = metadata.len();
@@ -281,11 +269,11 @@ fn get_detail_render(file_path: &str, start_seek: u64) -> Result<DetailRender, B
         file.read_to_string(&mut contents)?;
     }
 
-    let render = DetailRender::new(contents, directory_filter(file_path.to_string()), seek);
+    let render = DetailRender::new(contents, directory_filter(path.to_string_lossy().to_string()), seek);
     Ok(render)
 }
 
-// Read file with some trys
+// Try to read the file some times.
 fn attemp_to_read_file(
     file: &mut File,
     seek: u64,
@@ -311,14 +299,12 @@ fn attemp_to_read_file(
 
 // Gets the filtered content of a file
 fn get_search_render(
-    file_path: &str,
+    path: &PathBuf,
     search: &str,
     before: &str,
     after: &str,
     case_insensitive: bool
 ) -> Result<SearchRender, Box<dyn Error>> {
-    let file_path = &get_complete_directory(file_path);
-    let path = Path::new(file_path);
     let single_page_limit = 10485760;   // The max size of filtered result per page
     let mut size_limit = 0; // The max read size of all pages
     let mut content = "".to_string();
@@ -327,7 +313,7 @@ fn get_search_render(
             let entry = entry?;
             let path = entry.path();
             if !path.is_dir() {
-                let ret = get_search_render(path.to_str().unwrap(), search, before, after, case_insensitive);
+                let ret = get_search_render(&path, search, before, after, case_insensitive);
                 if let Ok(render) = ret {
                     if render.content.len() > 0 {
                         size_limit = size_limit + single_page_limit;
@@ -367,7 +353,7 @@ fn get_search_render(
 
     Ok(SearchRender::new(
         content,
-        file_path.to_string(),
+        path.to_string_lossy().to_string(),
         search.to_string(),
     ))
 }
@@ -432,12 +418,13 @@ fn do_login(args: State<Args>, login: Form<Login>, mut cookies: Cookies) -> Stri
         render.insert("msg".to_owned(), "帐号或密码错误".to_owned());
     }
     // login.username;
-    serde_json::to_string(&render).unwrap_or("{\"status\":\"0\"}".to_owned())
+    serde_json::to_string(&render).unwrap_or(return_result(0, ""))
 }
 
 #[get("/more?<seek>&<path>", rank = 3)]
-fn more(seek: u64, path: String, _auth: Authorization) -> String {
+fn more(args: State<Args>, seek: u64, path: String, _auth: Authorization) -> String {
     let mut output = "".to_string();
+    let path = &args.file_dir.join(path_to_relative(&PathBuf::from(path)));
     match get_detail_render(&path, seek) {
         Ok(render) => {
             if let Ok(a) = serde_json::to_string(&render) {
@@ -468,6 +455,7 @@ fn search(
         true => false,
         false => true
     };
+    let path = &args.file_dir.join(path_to_relative(&PathBuf::from(path)));
     match get_search_render(&path, &search, &before, &after, case_insensitive) {
         Ok(render) => {
             return Template::render("search", render);
@@ -490,9 +478,9 @@ fn detail(args: State<Args>, name: PathBuf, _auth: Authorization) -> DetailRespo
     if args.log {
         log!(format!("Access detail, path:{}", name.to_string_lossy()));
     }
-    let path = Path::new(&args.file_dir).join(name);
+    let path = &args.file_dir.join(path_to_relative(&name));
     if path.is_dir() {
-        match get_directory_info_render(&path.to_string_lossy()) {
+        match get_directory_info_render(&path) {
             Ok(render) => return DetailResponse::Template(Template::render("index", render)),
             Err(e) => {
                 let render = ErrorRender::new(e.to_string());
@@ -500,7 +488,7 @@ fn detail(args: State<Args>, name: PathBuf, _auth: Authorization) -> DetailRespo
             }
         };
     } else {
-        match get_detail_render(&path.to_string_lossy(), 0) {
+        match get_detail_render(&path, 0) {
             Ok(mut render) => {
                 render.set_write(args.write);
                 return DetailResponse::Template(Template::render("detail", render));
@@ -577,7 +565,7 @@ fn debug_agent(args: State<Args>, params: Json<DebugAgent>) -> String {
 
 #[derive(Deserialize, Debug)]
 struct AppendParams{
-    path: String,
+    path: PathBuf,
     content: String,
 }
 
@@ -591,7 +579,7 @@ fn append(args: State<Args>, params: Json<AppendParams>) -> String {
         return return_result(0, "不支持写入");
     }
 
-    let full_file_name = Path::new(&args.file_dir).join(&params.path);
+    let full_file_name = &args.file_dir.join(path_to_relative(&params.path));
     if let Ok(mut file) = OpenOptions::new()
         .write(true)
         .append(true)
@@ -606,12 +594,45 @@ fn append(args: State<Args>, params: Json<AppendParams>) -> String {
     return_result(1, "")
 }
 
+#[post("/upload?<path>", format="multipart/form-data", data = "<file>")]
+fn upload(cont_type: &ContentType, args: State<Args>, file: Data, path: String) -> String {
+    if args.log {
+        log!("Append to file");
+    }
+
+    if !args.write {
+        return return_result(0, "不支持写入");
+    }
+
+    let dir_path = &args.file_dir.join(path_to_relative(&PathBuf::from(path)));
+
+    let (_, boundary) = cont_type.params().find(|&(k, _)| k == "boundary").ok_or_else(
+        || return_result(0, "格式错误")
+    ).unwrap();
+
+    match Multipart::with_body(file.open(), boundary).save().with_dir(dir_path) {
+        Full(_entries) => (),
+        Partial(_partial, _) => (),
+        Error(_) => return return_result(0, "写入错误"),
+    }
+    
+    return_result(1, "")
+}
+
 fn string_to_static_str(s: String) -> &'static str {
     Box::leak(s.into_boxed_str())
 }
 
 fn return_result(status: u8, msg: &str) -> String {
     return format!("{{\"status\":{}, \"message\":\"{}\"}}", status, msg);
+}
+
+fn path_to_relative(path: &PathBuf) -> PathBuf {
+    let mut new_path = path.to_string_lossy().to_string();
+    if path.is_absolute() {
+        new_path = ".".to_string() + &new_path;
+    }
+    PathBuf::from(new_path.replace("..", ""))
 }
 
 fn main() {
@@ -623,7 +644,7 @@ fn main() {
         .manage(args)
         .mount(
             "/",
-            routes![auth, index, detail, more, search, login, do_login, debug, debug_agent, append],
+            routes![auth, index, detail, more, search, login, do_login, debug, debug_agent, append, upload],
         )
         .mount("/public", StaticFiles::from("./templates/static"))
         .attach(Template::fairing());
@@ -672,10 +693,7 @@ fn parse_arguments() -> Args {
         )
         .get_matches();
 
-    let mut dir = matches.value_of("directory").unwrap().to_owned();
-    if !dir.ends_with("/") {
-        dir.push_str("/");
-    }
+    let dir = PathBuf::from(matches.value_of("directory").unwrap());
 
     let username = match matches.is_present("username") {
         true => Some(matches.value_of("username").unwrap().to_owned()),

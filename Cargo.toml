@@ -15,6 +15,7 @@ chrono = "0.4.11"
 grep = "0.2.6"
 clap = "2.33.3"
 reqwest = "0.9.22"
+multipart = "0.18.0"
 
 [dependencies.rocket_contrib]
 version = "0.4.4"
