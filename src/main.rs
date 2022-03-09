@@ -22,8 +22,8 @@ use chrono::DateTime;
 use std::io::SeekFrom;
 use std::error::Error;
 use chrono::prelude::*;
-use chrono::offset::Utc;
 use std::io::prelude::*;
+use chrono::offset::Local;
 use grep::printer::Standard;
 use std::collections::HashMap;
 use rocket::response::Redirect;
@@ -224,7 +224,7 @@ fn get_directory_info_render(path: &PathBuf) -> Result<IndexRender, Box<dyn Erro
             }
 
             let len = metadata.len();
-            let atime: DateTime<Utc> = metadata.modified()?.into();
+            let atime: DateTime<Local> = metadata.modified()?.into();
             let atime_string = atime.format("%Y-%m-%d %T").to_string();
 
             let class = match file_path.is_dir() {
@@ -594,8 +594,8 @@ fn append(args: State<Args>, params: Json<AppendParams>) -> String {
     return_result(1, "")
 }
 
-#[post("/upload?<path>", format="multipart/form-data", data = "<file>")]
-fn upload(cont_type: &ContentType, args: State<Args>, file: Data, path: String) -> String {
+#[post("/upload?<path>&<file_name>", format="multipart/form-data", data = "<file>")]
+fn upload(cont_type: &ContentType, args: State<Args>, file: Data, path: String, file_name: String) -> String {
     if args.log {
         log!("Append to file");
     }
@@ -604,16 +604,16 @@ fn upload(cont_type: &ContentType, args: State<Args>, file: Data, path: String) 
         return return_result(0, "不支持写入");
     }
 
-    let dir_path = &args.file_dir.join(path_to_relative(&PathBuf::from(path)));
+    let file_path = &args.file_dir.join(path_to_relative(&PathBuf::from(path))).join(path_to_relative(&PathBuf::from(file_name)));
 
     let (_, boundary) = cont_type.params().find(|&(k, _)| k == "boundary").ok_or_else(
         || return_result(0, "格式错误")
     ).unwrap();
 
-    match Multipart::with_body(file.open(), boundary).save().with_dir(dir_path) {
-        Full(_entries) => (),
-        Partial(_partial, _) => (),
-        Error(_) => return return_result(0, "写入错误"),
+    match Multipart::with_body(file.open(), boundary).read_entry().unwrap().unwrap().data.save().memory_threshold(0).with_path(file_path) {
+        Full(_entries) => (println!("{:?}", _entries)),
+        Partial(_partial, e) => return return_result(0, &format!("写入错误:{:?}", e)),
+        Error(e) => return return_result(0, &format!("写入错误:{:?}", e)),
     }
     
     return_result(1, "")
