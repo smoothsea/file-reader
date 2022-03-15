@@ -128,29 +128,43 @@
               e.preventDefault();
             }
 
-            // TODO 重复先提示
             document.addEventListener("drop",function(e){
               e.preventDefault();
               var formData = new FormData();
               var file = e.dataTransfer.files[0];
               formData.append("file", file);
 
+              function upload() {
+                $.ajax({
+                  type: 'post',
+                  url: '/upload?path=' + path + '&file_name=' + file.name,
+                  processData: false,
+                  contentType: false,
+                  data:formData,
+                  success:function(ret){
+                    ret = JSON.parse(ret);
+                    if (ret.status == 1) {
+                      window.location.reload();
+                    } else {
+                      alert(ret.message);
+                    }
+                  },
+                  error:function(xhr, type){
+                  }
+                });
+              }
+
               $.ajax({
                 type: 'post',
-                url: '/upload?path=' + path + '&file_name=' + file.name,
-                processData: false,
-                contentType: false,
-                data:formData,
+                url: '/file_exist?path=' + path + '&file_name=' + file.name,
                 dataType:'json',
                 success:function(ret){
                   if (ret.status == 1) {
-                    window.location.reload();
+                      alert("已有相同文件，无法上传");
                   } else {
-                    alert(ret.message);
+                      upload();
                   }
                 },
-                error:function(xhr, type){
-                }
               });
             })
         })(window, document)
