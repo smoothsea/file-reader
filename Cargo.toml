@@ -16,6 +16,7 @@ grep = "0.2.6"
 clap = "2.33.3"
 reqwest = "0.9.22"
 multipart = "0.18.0"
+v_htmlescape = "0.14.1"
 
 [dependencies.rocket_contrib]
 version = "0.4.4"
