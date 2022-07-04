@@ -57,8 +57,9 @@
         }
 
         .append-content {
-          background-color: #F8E0E6;           
           display: block;
+          background-color: #F8E0E6;           
+          padding-bottom: 15px;
         }
     </style>
     <link rel="stylesheet" href="/public/default.min.css">
@@ -107,7 +108,10 @@
         var defaultPageSize = 0;
 
         function handleContent(content) {
-            var content = content.replace(/(\r\n|\r|\n)/g, '<br/>').replace(/\s/g, '&nbsp')
+            var content = content
+                .replace(/(\r\n|\r|\n)/g, '<br/>')
+                .replace(/\s/g, '&nbsp;')
+                .replace(/(http|https)(:\/\/.*?)(<br\/>|&nbsp;)/g, '<a href="$1$2" target="_blank">$1$2$3</a>')
                 .replace(/(请求地址:(&nbsp)*(.*?)(<br\/>)+json:(&nbsp)*(.*?)(<br\/>)+)/g, function (match, p1, p2, p3, p4, p5, p6) {
                         return '<a target="blank" href="/debug?uri='+encodeURIComponent(p3)+'&json='+encodeURIComponent(p6)+'">调试</a><br/>'+p1;
                 });
@@ -185,8 +189,7 @@
                           content = content.substr(content.length - defaultPageSize)
                           flushShow();
                       } else {
-                          $("#content").append('<span class="append-content" id="' + contentId +
-                          '">' + newContent + '</span>');
+                          $("#content").append('<span class="append-content" id="' + contentId +'">' + newContent + '</span>');
                       }
                       seek = data.seek;
                       setTimeout(function () {
