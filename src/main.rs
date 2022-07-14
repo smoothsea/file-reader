@@ -8,7 +8,6 @@ extern crate serde_derive;
 use rocket::Data;
 use rocket::State;
 use rocket::Outcome;
-use v_htmlescape::escape;
 use rocket_contrib::json::Json;
 use rocket::response::NamedFile;
 use rocket_contrib::serve::StaticFiles;
@@ -585,7 +584,7 @@ fn append(args: State<Args>, params: Json<AppendParams>) -> String {
         .write(true)
         .append(true)
         .open(&full_file_name) {
-        if let Err(_e) = file.write_all(format!("\r\n{}", &escape(&params.content)).as_bytes()) {
+        if let Err(_e) = file.write_all(format!("\r\n{}", params.content).as_bytes()) {
             return return_result(0, "文件写入错误");
         }
     } else {

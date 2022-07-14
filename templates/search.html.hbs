@@ -40,9 +40,9 @@
             var flag = caseSensitive ? "g" : "gi";
             var reg = new RegExp(search, flag);
             var tagPlaceholder = "p]l]a]c]e]h]o]l]d]e]r";
-            content = content.replace(/(\r|\n|\r\n)/g, '<br>').replace(/\s/g, "&nbsp")
-                .replace(/(请求地址:(&nbsp)*(.*?)(<br>)+\S*?json:(&nbsp)*(.*?)(<br>)+)/g, function (match, p1, p2, p3, p4, p5, p6) {
-                    return '<a target="blank" href="/debug?uri=' + encodeURIComponent(p3) + '&json=' + encodeURIComponent(p6) + '">调试</a>&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp ' + p1;
+            content = content.replace(/(\r|\n|\r\n)/g, '<br>').replace(/\s/g, "&nbsp;")
+                .replace(/(请求地址:(&nbsp;)*(.*?)(<br>)+\S*?json:(&nbsp;)*(.*?)(<br>)+)/g, function (match, p1, p2, p3, p4, p5, p6) {
+                    return '<a target="blank" href="/debug?uri=' + encodeURIComponent(p3) + '&json=' + encodeURIComponent(p6) + '">调试</a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ' + p1;
                 });
             // 替换标签
             var map = [];

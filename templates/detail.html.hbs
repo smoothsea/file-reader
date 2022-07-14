@@ -111,10 +111,10 @@
             var content = content
                 .replace(/(\r\n|\r|\n)/g, '<br/>')
                 .replace(/\s/g, '&nbsp;')
-                .replace(/(http|https)(:\/\/.*?)(<br\/>|&nbsp;)/g, '<a href="$1$2" target="_blank">$1$2$3</a>')
-                .replace(/(请求地址:(&nbsp)*(.*?)(<br\/>)+json:(&nbsp)*(.*?)(<br\/>)+)/g, function (match, p1, p2, p3, p4, p5, p6) {
+                .replace(/(请求地址:(&nbsp;)*(.*?)(<br\/>)+json:(&nbsp;)*(.*?)(<br\/>)+)/g, function (match, p1, p2, p3, p4, p5, p6) {
                         return '<a target="blank" href="/debug?uri='+encodeURIComponent(p3)+'&json='+encodeURIComponent(p6)+'">调试</a><br/>'+p1;
-                });
+                })
+                .replace(/(http|https)(:\/\/.*?)(<br\/>|&nbsp;|$)/g, '<a href="$1$2" target="_blank">$1$2$3</a>');
             return content;
         }
 
