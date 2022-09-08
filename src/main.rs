@@ -22,7 +22,6 @@ use chrono::DateTime;
 use std::io::SeekFrom;
 use std::error::Error;
 use std::path::PathBuf;
-use chrono::prelude::*;
 use std::io::prelude::*;
 use chrono::offset::Local;
 use grep::printer::Standard;
@@ -309,13 +308,17 @@ fn get_search_render(
     let mut size_limit = 0; // The max read size of all pages
     let mut content = "".to_string();
     if path.is_dir() {
-        for entry in fs::read_dir(path)? {
+        for entry in fs::read_dir(path)?.filter(|en| {
+            !en.as_ref().unwrap().path().file_name().unwrap().to_str().unwrap().starts_with(".")
+        }) {
             let entry = entry?;
             let path = entry.path();
-            if !path.is_dir() {
-                let ret = get_search_render(&path, search, before, after, case_insensitive);
-                if let Ok(render) = ret {
-                    if render.content.len() > 0 {
+            let ret = get_search_render(&path, search, before, after, case_insensitive);
+            if let Ok(render) = ret {
+                if render.content.len() > 0 {
+                    if path.is_dir() {
+                        content = format!("{}{}", content, render.content);
+                    } else {
                         size_limit = size_limit + single_page_limit;
                         content = format!(
                             "{}\r\n\r\n\r\n\r\n{}\r\n\r\n{}",
