@@ -38,31 +38,53 @@
 
         function handleContent(content, caseSensitive) {
             var flag = caseSensitive ? "g" : "gi";
-            var reg = new RegExp(search, flag);
-            var tagPlaceholder = "p]l]a]c]e]h]o]l]d]e]r";
-            content = content.replace(/(\r|\n|\r\n)/g, '<br>').replace(/\s/g, "&nbsp;")
-                .replace(/(请求地址:(&nbsp;)*(.*?)(<br>)+\S*?json:(&nbsp;)*(.*?)(<br>)+)/g, function (match, p1, p2, p3, p4, p5, p6) {
-                    return '<a target="blank" href="/debug?uri=' + encodeURIComponent(p3) + '&json=' + encodeURIComponent(p6) + '">调试</a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ' + p1;
-                });
-            // 替换标签
-            var map = [];
-            content = content.replace(/(<.*?>)/g, function (match) {
-                map.push(match);
-                return tagPlaceholder;
+            var reg = new RegExp(search.replaceAll(" ", "&nbsp;"), flag);
+            var noReg = /(^(\d+)[-:])/;
+            var debugReg = new RegExp('(请求地址:(&nbsp;)*(.*?)(<br>)+.*?json:(&nbsp;)*(.*?)(<br>)+)', "gi");
+
+            var arr = content.split(/[\r\n]/g);
+            var aheadMap = [];
+            for (var i = 0, len = arr.length; i < len; i++) {
+                var isContent = false;
+                var match = "";
+                if (match = arr[i].match(noReg)) {
+                  match = match[2];
+                  isContent = true;
+                }
+
+                if (match === null) match = "";
+                aheadMap.push(match);
+
+                // 去掉行首
+                arr[i] = arr[i].replace(noReg, '');
+
+                // 替换空格
+                arr[i] = arr[i].replace(/\s/g, "&nbsp;");
+
+                if (isContent && search.trim() !== "") {
+                  // 替换关键词
+                  arr[i] = arr[i].replace(reg, '<i style="color:red;">' + search + '</i>');
+                }
+            }
+            content = arr.join("<br>");
+            content = content.replace(debugReg, function (match, p1, p2, p3, p4, p5, p6, p7, p8, p9) {
+                return '<a target="blank" href="/debug?uri=' + encodeURIComponent(stripTags(p3)) + '&json=' + encodeURIComponent(stripTags(p6)) + '">调试 </a>' + p1;
             });
 
-            var i = -1;
-            content = content.replace(reg, '<i style="color:red;">' + search + '</i>').replace(new RegExp(tagPlaceholder, "g"), function () {
-                i++;
-                return map[i];
-            });
-            var arr = content.split("<br>");
+            // 加上行首
+            var arr = content.split(/<br>/g);
             for (var i = 0, len = arr.length; i < len; i++) {
-                arr[i] = arr[i].replace(/(^(\d+)(-|:))/, '<i class="row">$2</i>&nbsp;&nbsp;&nbsp;');
+              if (aheadMap[i] !== "") {
+                arr[i] = '<i class="row">' + aheadMap[i] + '</i>' + "&nbsp;&nbsp;&nbsp;" + arr[i];
+              }
             }
             content = arr.join("<br>");
 
             return content;
+        }
+
+        function stripTags(html) {
+          return html.replace(/<.*?>/g, "");
         }
 
         function getQueryVariable(variable) {
