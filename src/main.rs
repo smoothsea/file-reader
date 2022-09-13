@@ -307,6 +307,8 @@ fn get_search_render(
     let single_page_limit = 10485760;   // The max size of filtered result per page
     let mut size_limit = 0; // The max read size of all pages
     let mut content = "".to_string();
+    let is_root = format!("{:?}", path).to_string() == "\"/home/smoothsea/project/108new/./application\"".to_string();
+    
     if path.is_dir() {
         for entry in fs::read_dir(path)?.filter(|en| {
             !en.as_ref().unwrap().path().file_name().unwrap().to_str().unwrap().starts_with(".")
@@ -314,19 +316,29 @@ fn get_search_render(
             let entry = entry?;
             let path = entry.path();
             let ret = get_search_render(&path, search, before, after, case_insensitive);
-            if let Ok(render) = ret {
-                if render.content.len() > 0 {
-                    if path.is_dir() {
-                        content = format!("{}{}", content, render.content);
-                    } else {
-                        size_limit = size_limit + single_page_limit;
-                        content = format!(
-                            "{}\r\n\r\n\r\n\r\n{}\r\n\r\n{}",
-                            content,
-                            directory_filter(path.to_str().unwrap().to_string()),
-                            render.content
-                        );
+
+            match ret {
+                Ok(render) => {
+                    if render.content.len() > 0 {
+                        if path.is_dir() {
+                            content = format!("{}{}", content, render.content);
+                        } else {
+                            content = format!(
+                                "{}\r\n\r\n\r\n\r\n{}\r\n\r\n{}",
+                                content,
+                                directory_filter(path.to_str().unwrap().to_string()),
+                                render.content
+                            );
+                        }
                     }
+                },
+                Err(e) => {
+                    content = format!(
+                        "{}\r\n\r\n\r\n\r\n{}\r\n\r\n{}",
+                        content,
+                        directory_filter(path.to_str().unwrap().to_string()),
+                        e.as_ref(),
+                    );
                 }
             }
         }
@@ -348,10 +360,10 @@ fn get_search_render(
             .search_file(&matcher, &file, printer.sink(&matcher))?;
         let search_bytes = printer.into_inner().into_inner();
         content = String::from_utf8(search_bytes)?;
-    }
 
-    if content.len() > size_limit {
-        return Err("搜索结果太大，请使用更准确的搜索词")?;
+        if content.len() > size_limit {
+            return Err("搜索结果太大，请使用更准确的搜索词")?;
+        }
     }
 
     Ok(SearchRender::new(
