@@ -3,10 +3,18 @@
     <meta name=renderer content=webkit>
     <title>文件夹</title>
     <style>
+      i {
+        font-style: nomal;
+      }
+
       #main tr td:first-child {
         line-height: 24px;
         display: flex;
         align-item: center;
+      }
+
+      #main thead td {
+        cursor: pointer;
       }
     </style>
 </head>
@@ -25,7 +33,7 @@
     </form>
     <table id="main" style="width: 100%;">
         <thead>
-            <td class="name">文件名</td>
+            <td class="name">文件名<i class="arrow">↑</i></td>
             <td class="size">文件大小</td>
             <td class="date">时间</td>
         </thead>
@@ -61,7 +69,8 @@
             for (var i = 0, len = headers.length; i < len; i++) {
                 var element = headers[i];
                 element.onclick = function (e) {
-                    var type = e.target.className;
+                    var target = e.target.className == "arrow" ? e.target.parentNode : e.target;
+                    var type = target.className;
                     if (sort.field == type) {
                         sort.order = sort.order == "asc" ? "desc" : "asc";
                     } else {
@@ -69,6 +78,10 @@
                         sort.order = "asc";
                     }
 
+                    var lastArrow = document.getElementsByClassName("arrow")[0];
+                    lastArrow && lastArrow.remove();
+                    var arrowHtml = sort.order == "asc" ? '<i class="arrow">↑</i>' : '<i class="arrow">↓</i>';
+                    target.innerHTML = target.innerHTML + arrowHtml;
                     init();
                 }
             }
