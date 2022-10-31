@@ -31,6 +31,9 @@
         <input type="hidden" name="path" value="{{ file_path }}">
         <input type="submit" value="搜索">
     </form>
+  
+  
+    <input type="file" name="file" id="upload_file" style="display:none">
     <table id="main" style="width: 100%;">
         <thead>
             <td class="name">文件名<i class="arrow">↑</i></td>
@@ -49,6 +52,8 @@
     </div>
     <script src="/public/zepto.js"></script>
     <script>
+        var write = {{ write }};
+
         (function (w, d) {
             var list;
             var sort = {
@@ -158,23 +163,10 @@
                 return bytes + symbols[i];
             }
 
-            // 拖拽上传
-            document.addEventListener("drop",preventDe);
-            document.addEventListener("dragleave",preventDe);
-            document.addEventListener("dragover",preventDe);
-            document.addEventListener("dragenter",preventDe);
-
-            function preventDe(e){
-              e.preventDefault();
-            }
-
-            document.addEventListener("drop",function(e){
-              e.preventDefault();
-              var formData = new FormData();
-              var file = e.dataTransfer.files[0];
-              formData.append("file", file);
-
-              function upload() {
+            function upload(file) {
+              function up(file) {
+                var formData = new FormData();
+                formData.append("file", file);
                 $.ajax({
                   type: 'post',
                   url: '/upload?path=' + path + '&file_name=' + file.name,
@@ -202,11 +194,43 @@
                   if (ret.status == 1) {
                       alert("已有相同文件，无法上传");
                   } else {
-                      upload();
+                      up(file);
                   }
                 },
               });
-            })
+            }
+
+            if (write) {
+                // 拖拽上传
+                document.addEventListener("drop",preventDe);
+                document.addEventListener("dragleave",preventDe);
+                document.addEventListener("dragover",preventDe);
+                document.addEventListener("dragenter",preventDe);
+
+                function preventDe(e){
+                  e.preventDefault();
+                }
+
+                document.addEventListener("drop",function(e){
+                  e.preventDefault();
+                  var file = e.dataTransfer.files[0];
+                  upload(file);
+                })
+
+                document.addEventListener("keyup", function (e) {
+                  if (e.keyCode == 85) {
+                    $("#upload_file").click();
+                  }
+                })
+                
+                document.getElementById("upload_file").addEventListener("change", function (e) {
+                  var files = document.getElementById("upload_file").files;
+                  if (files.length > 0) {
+                    upload(files[0]);
+                  }
+                })
+            }
+            
         })(window, document)
     </script>
 </body>

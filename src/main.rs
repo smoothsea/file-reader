@@ -88,6 +88,7 @@ struct IndexRender {
     info: String,
     list: String,
     file_path: Option<String>,
+    write: bool,
 }
 
 impl IndexRender {
@@ -103,7 +104,12 @@ impl IndexRender {
             info,
             list: list_json,
             file_path,
+            write: false,
         }
+    }
+
+    fn set_write(&mut self, write: bool) {
+        self.write = write;
     }
 }
 
@@ -393,10 +399,11 @@ fn auth(args: State<Args>, mut cookies: Cookies) -> Redirect {
 #[get("/file-reader-index")]
 fn index(args: State<Args>, _auth: Authorization) -> Template {
     match get_directory_info_render(&args.file_dir) {
-        Ok(render) => {
+        Ok(mut render) => {
             if args.log {
                 log!("Access index");
             }
+            render.set_write(args.write);
             return Template::render("index", render);
         }
         Err(e) => {
@@ -496,7 +503,10 @@ fn detail(args: State<Args>, name: PathBuf, _auth: Authorization) -> DetailRespo
     let path = &args.file_dir.join(path_to_relative(&name));
     if path.is_dir() {
         match get_directory_info_render(&path) {
-            Ok(render) => return DetailResponse::Template(Template::render("index", render)),
+            Ok(mut render) => {
+                render.set_write(args.write);
+                return DetailResponse::Template(Template::render("index", render));
+            },
             Err(e) => {
                 let render = ErrorRender::new(e.to_string());
                 return DetailResponse::Template(Template::render("error", render));
