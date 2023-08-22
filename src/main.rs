@@ -673,6 +673,11 @@ fn file_exist(args: State<Args>, path: String, file_name: String) -> String {
     }
 }
 
+#[catch(403)]
+fn forbidden() -> Redirect {
+    Redirect::to(uri!(login))
+}
+
 fn string_to_static_str(s: String) -> &'static str {
     Box::leak(s.into_boxed_str())
 }
@@ -696,6 +701,7 @@ fn main() {
     }
     let app = rocket::ignite()
         .manage(args)
+        .register(catchers![forbidden])
         .mount(
             "/",
             routes![auth, index, detail, more, search, login, do_login, debug, debug_agent, append, upload, file_exist],
