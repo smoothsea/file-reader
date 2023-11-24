@@ -83,10 +83,11 @@
     <span class="load">加载中...</span>
     <div id="content" style="display: none;">{{ content }}</div>
 
-    <div id="write-icon" style="position: fixed;bottom: 10px;right: 30px; z-index: 100;
-    cursor:pointer; display: none">
-        <span style="height:100px; line-height:100px; display:block; color:#FFF; text-align:center;">
-          <img src="/public/plus.png" style="width:25px;height:25px"></img>
+    <div style="position: fixed;bottom: 10px;right: 30px; z-index: 100;
+    cursor:pointer;">
+        <span style="height:100px; display:block; color:#FFF; text-align:center;">
+          <img id="write-icon" src="/public/plus.png" style="width:25px;height:25px;display:none"></img>
+          <img src="/public/bottom.png" style="width:25px;height:25px;margin-top:10px" onclick="window.scrollTo({behavior: 'smooth', top: document.body.scrollHeight})"></img>
         </span>
     </div>
 
@@ -222,7 +223,7 @@
             }
 
             if (write) {
-                $("#write-icon").show();
+                $("#write-icon").show().css("display", "block");
 
                 $("#write-icon").click(function () {
                   $("#open-modal").show();
