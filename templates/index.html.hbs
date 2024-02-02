@@ -16,6 +16,24 @@
       #main thead td {
         cursor: pointer;
       }
+
+      .menu {
+        position: absolute;
+        background-color: #fff;
+        border: 1px solid #ccc;
+        padding: 5px;
+      }
+
+      .menu li {
+        list-style: none;
+        padding: 5px;
+        font-size: 12px;
+      }
+
+      .menu li:hover {
+        background-color: #f1f1f1;
+        cursor: pointer;
+      }
     </style>
 </head>
 <body>
@@ -116,8 +134,9 @@
                 var html = "";
                 for (i = 0, len = tArray.length; i < len; i++) {
                     var t = byteToText(tArray[i]["size"]);
+                    var type = tArray[i]["class"];
                     html += "<tr>"
-                        + "<td>" + getIconHtml(tArray[i]["class"]) + '&nbsp;&nbsp;<a href="' + url + tArray[i]["name"] + '">' + tArray[i]["name"] + "</a></td>"
+                        + '<td>' + getIconHtml(type) + '&nbsp;&nbsp;<a href="' + url + tArray[i]["name"] + '" ' + (type != "d" ? 'class="file-name"' : '') + '>' + tArray[i]["name"] + "</a></td>"
                         + "<td>" + t + "</td>"
                         + "<td>" + tArray[i]["date"] + "</td>"
                         + "</tr>";
@@ -230,7 +249,34 @@
                   }
                 })
             }
-            
+
+            $("body").on("contextmenu", ".file-name", function (e) {
+                e.preventDefault();
+                $('.menu').remove();
+                var menu = $('<ul class="menu"></ul>')
+                  .append('<li class="download" data-href="' + $(this).attr("href") + '">下载</li>')
+                  .appendTo('body');
+                  
+                menu.css({
+                  left: e.pageX,
+                  top: e.pageY
+                });
+            })
+
+            $("body").on("contextmenu", function (e) {
+                if (e.target.className != "file-name") {
+                    $('.menu').remove();
+                }
+            })
+
+            $("body").on("click", ".download", function (e) {
+                var url = $(this).data("href");
+                window.location.href = url + "?download=1";
+            })
+
+            $("body").click(function () {
+                $('.menu').remove();
+            })
         })(window, document)
     </script>
 </body>

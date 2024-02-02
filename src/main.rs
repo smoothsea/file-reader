@@ -495,8 +495,8 @@ enum DetailResponse {
     NamedFile(Option<NamedFile>),
 }
 
-#[get("/<name..>", rank = 100)]
-fn detail(args: State<Args>, name: PathBuf, _auth: Authorization) -> DetailResponse {
+#[get("/<name..>?<download>", rank = 100)]
+fn detail(args: State<Args>, name: PathBuf, download: Option<u8>, _auth: Authorization) -> DetailResponse {
     if args.log {
         log!(format!("Access detail, path:{}", name.to_string_lossy()));
     }
@@ -513,6 +513,10 @@ fn detail(args: State<Args>, name: PathBuf, _auth: Authorization) -> DetailRespo
             }
         };
     } else {
+        if download.is_some() {
+            return DetailResponse::NamedFile(NamedFile::open(&path).ok());
+        }
+
         match get_detail_render(&path, 0) {
             Ok(mut render) => {
                 render.set_write(args.write);
