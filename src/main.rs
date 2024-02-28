@@ -677,6 +677,34 @@ fn file_exist(args: State<Args>, path: String, file_name: String) -> String {
     }
 }
 
+#[post("/delete?<path>&<file_name>")]
+fn delete(args: State<Args>, path: String, file_name: String) -> String {
+    if args.log {
+        log!("Delete");
+    }
+
+    if !args.write {
+        return return_result(0, "不支持删除");
+    }
+
+    let file_path = &args.file_dir.join(path_to_relative(&PathBuf::from(path))).join(path_to_relative(&PathBuf::from(file_name))).as_path().to_owned();
+    if file_path.exists() {
+        let ret = if file_path.is_dir() {
+            fs::remove_dir_all(file_path)
+        } else {
+            fs::remove_file(file_path)
+        };
+
+        if let Err(e) = ret {
+            return return_result(0, &e.to_string());
+        } else {
+            return return_result(1, "");
+        }
+    } else {
+        return return_result(0, "文件不存在");
+    }
+}
+
 #[catch(403)]
 fn forbidden() -> Redirect {
     Redirect::to(uri!(login))
@@ -708,7 +736,7 @@ fn main() {
         .register(catchers![forbidden])
         .mount(
             "/",
-            routes![auth, index, detail, more, search, login, do_login, debug, debug_agent, append, upload, file_exist],
+            routes![auth, index, detail, more, search, login, do_login, debug, debug_agent, append, upload, file_exist, delete],
         )
         .mount("/public", StaticFiles::from("./templates/static"))
         .attach(Template::fairing());

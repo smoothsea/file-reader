@@ -136,7 +136,7 @@
                     var t = byteToText(tArray[i]["size"]);
                     var type = tArray[i]["class"];
                     html += "<tr>"
-                        + '<td>' + getIconHtml(type) + '&nbsp;&nbsp;<a href="' + url + tArray[i]["name"] + '" ' + (type != "d" ? 'class="file-name"' : '') + '>' + tArray[i]["name"] + "</a></td>"
+                        + '<td>' + getIconHtml(type) + '&nbsp;&nbsp;<a href="' + url + tArray[i]["name"] + '" data-type="' + type + '"' + ' class="file-name">' + tArray[i]["name"] + "</a></td>"
                         + "<td>" + t + "</td>"
                         + "<td>" + tArray[i]["date"] + "</td>"
                         + "</tr>";
@@ -252,15 +252,33 @@
 
             $("body").on("contextmenu", ".file-name", function (e) {
                 e.preventDefault();
+
                 $('.menu').remove();
-                var menu = $('<ul class="menu"></ul>')
-                  .append('<li class="download" data-href="' + $(this).attr("href") + '">下载</li>')
-                  .appendTo('body');
-                  
-                menu.css({
-                  left: e.pageX,
-                  top: e.pageY
-                });
+
+                var linkType = $(this).data("type");
+                var menu = $('<ul class="menu"></ul>');
+
+                var subMenus = [];
+                if (linkType != "d") {
+                  subMenus.push('<li class="download" data-href="' + $(this).attr("href") + '">下载</li>');
+                }
+        
+                if (write) {
+                  subMenus.push('<li class="delete" data-name="' + $(this).text() + '">删除</li>');
+                }
+
+                for (var i=0,len=subMenus.length; i<len; i++) {
+                  menu.append(subMenus[i]);
+                }
+
+                if (subMenus.length > 0) {
+                  menu.appendTo('body');
+                    
+                  menu.css({
+                    left: e.pageX,
+                    top: e.pageY
+                  });
+                }
             })
 
             $("body").on("contextmenu", function (e) {
@@ -272,6 +290,24 @@
             $("body").on("click", ".download", function (e) {
                 var url = $(this).data("href");
                 window.location.href = url + "?download=1";
+            })
+
+            $("body").on("click", ".delete", function (e) {
+                if (confirm("确定要删除吗") == true) {
+                    var name = $(this).data("name");
+                    $.ajax({
+                      type: 'post',
+                      url: '/delete?path=' + path + '&file_name=' + name,
+                      dataType:'json',
+                      success:function(ret){
+                        if (ret.status == 1) {
+                          location.reload();
+                        } else {
+                          alert(ret.message);
+                        }
+                      },
+                    });
+                }
             })
 
             $("body").click(function () {
